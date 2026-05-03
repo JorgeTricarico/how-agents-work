@@ -94,18 +94,36 @@ const STAGES: Stage[] = [
     },
   },
   {
-    id: "ctx-assembly",
-    at: 0.28,
-    label: { es: "3. Ensamblado de contexto", en: "3. Context assembly" },
+    id: "ctx-always",
+    at: 0.18,
+    label: { es: "3. Reglas siempre activas", en: "3. Always-on rules" },
     description: {
-      es: "Se inyectan en este orden: system prompt (fijo del vendor), reglas siempre activas (AGENTS.md / CLAUDE.md), reglas por path que matcheen lo que se va a editar, skills invocados, esquemas de herramientas y env (cwd, git status).",
-      en: "Injected in this order: system prompt (vendor-fixed), always-on rules (AGENTS.md / CLAUDE.md), path rules whose globs match the files about to be edited, invoked skills, tool schemas, and env (cwd, git status).",
+      es: "El system prompt (fijo del vendor) y las reglas que siempre se cargan — AGENTS.md / CLAUDE.md — entran al orbe primero. Definen el comportamiento base del agente para cualquier prompt.",
+      en: "The system prompt (vendor-fixed) and the rules that always load — AGENTS.md / CLAUDE.md — enter the orb first. They define base behavior for any prompt.",
+    },
+  },
+  {
+    id: "ctx-path",
+    at: 0.24,
+    label: { es: "4. Reglas por path + skills", en: "4. Path rules + skills" },
+    description: {
+      es: "Después se evalúan las reglas con globs (.cursor/rules/*.mdc, .github/instructions/*.instructions.md, .claude/rules/*) que matcheen los archivos a tocar, y los skills/prompts on-demand que el modelo decidió invocar.",
+      en: "Next, glob-scoped rules (.cursor/rules/*.mdc, .github/instructions/*, .claude/rules/*) that match the files being edited, plus any skills/prompts the model invoked on demand.",
+    },
+  },
+  {
+    id: "ctx-tools",
+    at: 0.30,
+    label: { es: "5. Tools + entorno", en: "5. Tools + env" },
+    description: {
+      es: "Los esquemas JSON de cada tool disponible y el contexto de runtime (cwd, branch, OS) se anexan al final. Sin esto el modelo no sabe qué puede llamar.",
+      en: "The JSON schemas for every available tool plus runtime context (cwd, branch, OS) are appended last. Without this the model wouldn't know what it can call.",
     },
   },
   {
     id: "ctx-merged",
-    at: 0.36,
-    label: { es: "4. Prompt final", en: "4. Final prompt" },
+    at: 0.38,
+    label: { es: "6. Prompt final", en: "6. Final prompt" },
     description: {
       es: "Todo lo anterior se concatena en un solo payload de mensajes. Ese payload — y nada más — es lo que recibe la API del LLM.",
       en: "Everything above is concatenated into a single messages payload. That payload — and nothing else — is what the LLM API receives.",
@@ -114,7 +132,7 @@ const STAGES: Stage[] = [
   {
     id: "inference",
     at: 0.42,
-    label: { es: "5. Inferencia", en: "5. Inference" },
+    label: { es: "7. Inferencia", en: "7. Inference" },
     description: {
       es: "El modelo decodifica tokens. Si decide que necesita una herramienta, emite un bloque structured tool_use en vez de texto libre.",
       en: "The model decodes tokens. If it decides it needs a tool, it emits a structured tool_use block instead of free text.",
@@ -123,7 +141,7 @@ const STAGES: Stage[] = [
   {
     id: "tool-intent",
     at: 0.46,
-    label: { es: "6. Intención de tool_use", en: "6. tool_use intent" },
+    label: { es: "8. Intención de tool_use", en: "8. tool_use intent" },
     description: {
       es: "El modelo todavía no ejecuta nada — sólo dice 'quiero llamar Edit con estos argumentos'. El harness es quien ejecuta.",
       en: "The model didn't run anything yet — it just said 'I want to call Edit with these args'. The harness is what executes.",
@@ -132,7 +150,7 @@ const STAGES: Stage[] = [
   {
     id: "pre-hook",
     at: 0.50,
-    label: { es: "7. PreToolUse hook", en: "7. PreToolUse hook" },
+    label: { es: "9. PreToolUse hook", en: "9. PreToolUse hook" },
     description: {
       es: "Antes de ejecutar, el harness corre tus hooks de PreToolUse. Reciben el JSON de la llamada por stdin y pueden permitir, mutar o denegar (exit 2). Acá es donde bloqueás cosas peligrosas como rm -rf o git push --force.",
       en: "Before executing, the harness runs your PreToolUse hooks. They receive the call JSON on stdin and can allow, mutate, or deny (exit 2). This is where you block dangerous things like rm -rf or git push --force.",
@@ -141,7 +159,7 @@ const STAGES: Stage[] = [
   {
     id: "tool-exec",
     at: 0.58,
-    label: { es: "8. Ejecución de la tool", en: "8. Tool execution" },
+    label: { es: "10. Ejecución de la tool", en: "10. Tool execution" },
     description: {
       es: "El harness ejecuta la herramienta en sandbox: aplica el Edit, corre el comando, hace el fetch. Captura stdout, stderr y exit code. Los errores no son excepciones — vuelven como tool_result.",
       en: "The harness runs the tool in a sandbox: applies the Edit, runs the command, makes the fetch. It captures stdout, stderr and exit code. Errors are not exceptions — they come back as tool_result.",
@@ -150,7 +168,7 @@ const STAGES: Stage[] = [
   {
     id: "post-hook",
     at: 0.68,
-    label: { es: "9. PostToolUse hook", en: "9. PostToolUse hook" },
+    label: { es: "11. PostToolUse hook", en: "11. PostToolUse hook" },
     description: {
       es: "Tras la ejecución corren tus hooks de PostToolUse: lint, format, typecheck, audit. Si fallan pueden devolver feedback al modelo, que lo ve como mensaje y reacciona — esta es la parte que hace que el agente 'aprenda' de sus propios errores.",
       en: "After execution, your PostToolUse hooks run: lint, format, typecheck, audit. If they fail they can return feedback to the model, which sees it as a message and reacts — this is what makes the agent 'learn' from its own mistakes.",
@@ -159,7 +177,7 @@ const STAGES: Stage[] = [
   {
     id: "result-back",
     at: 0.74,
-    label: { es: "10. Tool result al modelo", en: "10. Tool result fed back" },
+    label: { es: "12. Tool result al modelo", en: "12. Tool result fed back" },
     description: {
       es: "El resultado se agrega como un nuevo mensaje del rol tool. El loop arranca de nuevo desde el paso 5 con este turno extra de contexto.",
       en: "The result is appended as a new tool-role message. The loop restarts from step 5 with this extra context turn.",
@@ -168,7 +186,7 @@ const STAGES: Stage[] = [
   {
     id: "answer",
     at: 0.82,
-    label: { es: "11. Respuesta final", en: "11. Final answer" },
+    label: { es: "13. Respuesta final", en: "13. Final answer" },
     description: {
       es: "Cuando el modelo no necesita más herramientas, emite texto. El harness lo streamea token a token al chat y termina el turno.",
       en: "When the model needs no more tools, it emits text. The harness streams it token-by-token to the chat and ends the turn.",
@@ -178,6 +196,21 @@ const STAGES: Stage[] = [
 
 function within(p: number, a: number, b: number) {
   return p >= a && p <= b;
+}
+
+// Cards inject sequentially by slot so no two slots are ever crowded onscreen
+// at the same time. Each slot has a 0.04-progress window:
+//   slot 0 (top):    0.16 → 0.22
+//   slot 1 (middle): 0.22 → 0.28
+//   slot 2 (bottom): 0.28 → 0.34
+// All 'merged' content stays accumulated in the orb (which keeps growing).
+function getCardTiming(slot: number) {
+  const base = 0.16 + slot * 0.06;
+  return {
+    enter: base,
+    settle: base + 0.025,
+    converge: base + 0.05,
+  };
 }
 function typed(s: string, p: number, start: number, end: number) {
   if (p <= start) return "";
@@ -309,6 +342,35 @@ export default function CinematicScene() {
   }, [playing]);
 
   useEffect(() => () => stopPlay(), []);
+
+  // Keyboard navigation: ←/→ to step prev/next, Space to play/pause
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      // Only handle when the cinematic section is at least partially in viewport
+      const el = containerRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      const inView = r.bottom > 0 && r.top < window.innerHeight;
+      if (!inView) return;
+      // Ignore when typing in any input
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+
+      if (e.key === "ArrowRight") {
+        e.preventDefault();
+        stepNext();
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        stepPrev();
+      } else if (e.key === " ") {
+        e.preventDefault();
+        playing ? stopPlay() : startPlay();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [progress, playing]);
 
   // Camera tilt + parallax driven by scroll
   const camRotX = useTransform(scrollYProgress, [0, 1], [10, -6]);
@@ -767,7 +829,8 @@ function Card3D({
     body: pickLang(card.body, lang),
   };
 
-  const entryT = (progress - card.enter) / (card.settle - card.enter);
+  const timing = getCardTiming(card.slot);
+  const entryT = (progress - timing.enter) / (timing.settle - timing.enter);
   const ease = Math.min(1, Math.max(0, entryT));
 
   const { x: xFinal, y: yFinal, sign } = cardSlotPosition(card, lateralUnit, verticalUnit);
@@ -783,17 +846,17 @@ function Card3D({
   let scale = 0.85;
   let blur = 0;
 
-  if (progress < card.enter) {
+  if (progress < timing.enter) {
     opacity = 0;
-  } else if (progress < card.settle) {
+  } else if (progress < timing.settle) {
     opacity = ease;
     x = (sign * (lateralUnit + 220)) * (1 - ease) + xFinal * ease;
     y = (yFinal + 50) * (1 - ease) + yFinal * ease;
     zVal = (z - 240) * (1 - ease) + z * ease;
     rY = rotY * 1.6 * (1 - ease) + rotY * ease;
     scale = 0.85 + 0.15 * ease;
-  } else if (progress < card.converge) {
-    const drift = Math.sin((progress - card.settle) * 24) * 5;
+  } else if (progress < timing.converge) {
+    const drift = Math.sin((progress - timing.settle) * 24) * 5;
     opacity = 1;
     x = xFinal;
     y = yFinal + drift;
@@ -801,7 +864,7 @@ function Card3D({
     rY = rotY;
     scale = 1;
   } else {
-    const cT = Math.min(1, (progress - card.converge) / 0.06);
+    const cT = Math.min(1, (progress - timing.converge) / 0.03);
     opacity = 1 - cT;
     x = xFinal * (1 - cT);
     y = yFinal * (1 - cT);
@@ -1047,15 +1110,15 @@ function StagePanel({
     isHookStage && !agent.supportsHooks
       ? agent.hooksNote[(lang as "es" | "en") || "es"]
       : null;
+  // Fixed-width panel; the body just shows or hides — no animated width or
+  // height that would make the description text 'shrink' as scroll
+  // changes the active stage.
   return (
-    <div className="absolute top-20 left-4 md:left-6 z-50 pointer-events-none">
-      <motion.div
-        layout
-        animate={{ width: open ? 320 : 56 }}
-        transition={{ type: "spring", stiffness: 240, damping: 28 }}
-        className="glass rounded-2xl pointer-events-auto overflow-hidden"
-      >
-        {/* Header — always visible, click to toggle */}
+    <div
+      className="absolute top-20 left-4 md:left-6 z-50 pointer-events-auto"
+      style={{ width: open ? 320 : "auto" }}
+    >
+      <div className="glass rounded-2xl overflow-hidden">
         <button
           onClick={() => setOpen(!open)}
           className="w-full flex items-center gap-3 px-3 py-2 hover:bg-white/5 transition cursor-pointer"
@@ -1068,40 +1131,26 @@ function StagePanel({
               {stageIndex + 1}
             </span>
           </div>
-          {open && (
-            <motion.div
-              key={stage.id}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="flex-1 min-w-0 text-left"
-            >
-              <div className="text-[13px] font-semibold text-white truncate">
-                {stage.label[(lang as "es" | "en") || "es"]}
+          {open ? (
+            <>
+              <div className="flex-1 min-w-0 text-left">
+                <div className="text-[13px] font-semibold text-white truncate">
+                  {stage.label[(lang as "es" | "en") || "es"]}
+                </div>
+                <div className="mono text-[10px] text-white/45 truncate">
+                  {stageIndex + 1}/{total} · {agent.name}
+                </div>
               </div>
-              <div className="mono text-[10px] text-white/45 truncate">
-                {stageIndex + 1}/{total} · {agent.name}
-              </div>
-            </motion.div>
-          )}
-          {open && (
-            <span className="mono text-[10px] text-white/40 shrink-0">−</span>
-          )}
-          {!open && (
-            <span className="mono text-[10px] text-white/40 shrink-0 pr-1">+</span>
+              <span className="mono text-[12px] text-white/40 shrink-0 px-1">×</span>
+            </>
+          ) : (
+            <span className="mono text-[12px] text-white/40 shrink-0 pr-1">›</span>
           )}
         </button>
 
-        {/* Body — only when open */}
         {open && (
-          <motion.div
-            key={stage.id + "-body"}
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.25 }}
-            className="px-3 pb-3 pt-1"
-          >
-            <p className="text-[12px] text-white/70 leading-relaxed">
+          <div className="px-3 pb-3 pt-1 border-t border-white/5">
+            <p className="text-[12px] text-white/70 leading-relaxed min-h-[60px]">
               {stage.description[(lang as "es" | "en") || "es"]}
             </p>
             {noHooksNote && (
@@ -1109,9 +1158,9 @@ function StagePanel({
                 ⚠ {noHooksNote}
               </div>
             )}
-          </motion.div>
+          </div>
         )}
-      </motion.div>
+      </div>
     </div>
   );
 }
@@ -1130,8 +1179,12 @@ function ConvergenceOrb({
   // inference begins. The beam continues every time tool_result
   // is fed back, hinting that "everything funnels through here."
 
-  // Buildup grows as more cards reach their settled state
-  const reached = cards.filter((c) => progress >= c.settle).length;
+  // Buildup grows monotonically as each card finishes its slot's converge
+  // (i.e. has been merged into the orb).
+  const reached = cards.filter((c) => {
+    const t = getCardTiming(c.slot);
+    return progress >= t.converge;
+  }).length;
   const totalCards = cards.length || 1;
   const buildup = Math.min(1, reached / totalCards);
 
@@ -1353,8 +1406,9 @@ function InjectionArrows({
         ))}
       </defs>
       {cards.map((c) => {
-        const visible = progress > c.settle && progress < c.converge;
-        if (!visible && !converging) return null;
+        const ct = getCardTiming(c.slot);
+        const visible = progress > ct.settle && progress < ct.converge;
+        if (!visible) return null;
         const { x, y, sign } = cardSlotPosition(c, lateralUnit, verticalUnit);
         // Card edge facing center (from where the line leaves the card)
         const cardEdgeX = cx + x - sign * 100;
@@ -1365,7 +1419,7 @@ function InjectionArrows({
         const ctrlX = (cardEdgeX + orbX) / 2 + sign * -40;
         const ctrlY = orbY - 100;
         const path = `M ${cardEdgeX} ${cardY} Q ${ctrlX} ${ctrlY}, ${orbX} ${orbY}`;
-        const op = converging ? Math.max(0, 1 - (progress - c.converge) * 30) : 1;
+        const op = 1;
         return (
           <g key={c.key} opacity={op}>
             <motion.path
