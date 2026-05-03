@@ -436,7 +436,7 @@ export default function CinematicScene() {
     <section
       ref={containerRef}
       className="relative w-full"
-      style={{ height: "500vh" }}
+      style={{ height: "380vh" }}
     >
       {/* Sticky stage */}
       <div className="sticky top-0 h-screen w-full overflow-hidden">
@@ -490,9 +490,12 @@ export default function CinematicScene() {
           onReset={resetToTop}
         />
 
-        {/* 3D camera-tilted stage */}
+        {/* 3D camera-tilted stage. Top-aligned (with padding for the
+            agent-selector header) so the otherwise-empty space ABOVE the
+            orb is now used by the InputPanel — less wasted real estate,
+            less scrolling needed to traverse the section. */}
         <motion.div
-          className="absolute inset-0 flex items-center justify-center"
+          className="absolute inset-0 flex items-start justify-center pt-16 md:pt-20"
           style={{
             perspective: 2000,
           }}
