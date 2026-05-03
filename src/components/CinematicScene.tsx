@@ -21,6 +21,8 @@ import {
   Play,
   Pause,
   RotateCcw,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { useLang } from "@/lib/i18n";
 
@@ -72,6 +74,40 @@ const W = {
   iterPulse:      0.95,
 };
 
+// Step anchors per level — points the scrubber jumps to with prev/next.
+// These align with the *most readable* moment of each beat.
+type StepAnchor = { id: string; at: number; label: { es: string; en: string } };
+const STEPS: Record<LevelId, StepAnchor[]> = {
+  1: [
+    { id: "boot",     at: 0.005, label: { es: "Inicio", en: "Boot" } },
+    { id: "user",     at: 0.10,  label: { es: "Usuario escribe", en: "User types" } },
+    { id: "ctx",      at: 0.30,  label: { es: "Contexto se inyecta", en: "Context injects" } },
+    { id: "merge",    at: 0.36,  label: { es: "Mezcla en el modelo", en: "Mix into model" } },
+    { id: "thinking", at: 0.45,  label: { es: "Pensando", en: "Thinking" } },
+    { id: "answer",   at: 0.80,  label: { es: "Respuesta", en: "Answer" } },
+  ],
+  2: [
+    { id: "boot",     at: 0.005, label: { es: "Inicio", en: "Boot" } },
+    { id: "user",     at: 0.10,  label: { es: "Usuario escribe", en: "User types" } },
+    { id: "ctx",      at: 0.30,  label: { es: "Contexto + path-rules + skill", en: "Context + path-rules + skill" } },
+    { id: "merge",    at: 0.36,  label: { es: "Mezcla en el modelo", en: "Mix into model" } },
+    { id: "tool",     at: 0.44,  label: { es: "El modelo llama Edit", en: "Model calls Edit" } },
+    { id: "exec",     at: 0.58,  label: { es: "Tool ejecuta", en: "Tool runs" } },
+    { id: "answer",   at: 0.82,  label: { es: "Respuesta", en: "Answer" } },
+  ],
+  3: [
+    { id: "boot",     at: 0.005, label: { es: "Inicio", en: "Boot" } },
+    { id: "user",     at: 0.10,  label: { es: "Usuario escribe", en: "User types" } },
+    { id: "ctx",      at: 0.30,  label: { es: "Contexto completo", en: "Full context" } },
+    { id: "merge",    at: 0.36,  label: { es: "Mezcla en el modelo", en: "Mix into model" } },
+    { id: "tool",     at: 0.44,  label: { es: "tool_use", en: "tool_use" } },
+    { id: "preHook",  at: 0.47,  label: { es: "PreToolUse hook", en: "PreToolUse hook" } },
+    { id: "exec",     at: 0.58,  label: { es: "Tool ejecuta", en: "Tool runs" } },
+    { id: "postHook", at: 0.69,  label: { es: "PostToolUse hook", en: "PostToolUse hook" } },
+    { id: "answer",   at: 0.82,  label: { es: "Respuesta", en: "Answer" } },
+  ],
+};
+
 function within(p: number, a: number, b: number) {
   return p >= a && p <= b;
 }
@@ -85,7 +121,7 @@ function typed(s: string, p: number, start: number, end: number) {
 type LevelId = 1 | 2 | 3;
 
 export default function CinematicScene() {
-  const { t } = useLang();
+  const { t, lang: i18nLang } = useLang();
   const containerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
 
@@ -132,7 +168,9 @@ export default function CinematicScene() {
     const toY = sectionBottom;
     if (toY <= fromY) return;
     setPlaying(true);
-    const duration = Math.max(8000, ((toY - fromY) / rect.height) * 50000);
+    // Slower auto-play so each beat has time to land. ~95s for the
+    // full scene; proportionally less if user already scrolled in.
+    const duration = Math.max(12000, ((toY - fromY) / rect.height) * 95000);
     playStartRef.current = { ts: performance.now(), fromY, toY };
 
     const tick = (now: number) => {
@@ -157,6 +195,36 @@ export default function CinematicScene() {
     const sectionTop = window.scrollY + rect.top;
     window.scrollTo({ top: sectionTop, behavior: "smooth" });
   };
+
+  // Jump to a specific beat anchor (0..1 progress) by computing target scroll.
+  const seekToProgress = (p: number) => {
+    stopPlay();
+    if (!containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const sectionTop = window.scrollY + rect.top;
+    const total = rect.height - window.innerHeight;
+    if (total <= 0) return;
+    const target = sectionTop + p * total;
+    window.scrollTo({ top: target, behavior: "smooth" });
+  };
+
+  const stepNext = () => {
+    const anchors = STEPS[level];
+    const next = anchors.find((a) => a.at > progress + 0.005);
+    if (next) seekToProgress(next.at);
+  };
+  const stepPrev = () => {
+    const anchors = STEPS[level];
+    const prev = [...anchors].reverse().find((a) => a.at < progress - 0.005);
+    if (prev) seekToProgress(prev.at);
+    else seekToProgress(0);
+  };
+  const currentStep = (() => {
+    const anchors = STEPS[level];
+    let cur = anchors[0];
+    for (const a of anchors) if (progress >= a.at - 0.005) cur = a;
+    return cur;
+  })();
 
   // If user scrolls manually while playing, stop auto-play
   useEffect(() => {
@@ -301,9 +369,14 @@ export default function CinematicScene() {
               verticalUnit={verticalUnit}
             />}
 
-            {/* Convergence beam */}
+            {/* Convergence beam + merge burst */}
             <AnimatePresence>
-              {ctxConverging && <ConvergenceBeam />}
+              {ctxConverging && (
+                <>
+                  <ConvergenceBeam />
+                  <MergeBurst cards={visibleCards} />
+                </>
+              )}
             </AnimatePresence>
 
             {/* Chat panel — center stage */}
@@ -312,12 +385,24 @@ export default function CinematicScene() {
               style={{
                 width: chatWidth,
                 transformStyle: "preserve-3d",
-                boxShadow:
-                  "0 80px 160px -30px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.06) inset, 0 0 60px rgba(167,139,250,0.08)",
               }}
               initial={{ opacity: 0, y: 60 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 1, ease: [0.22, 1, 0.36, 1] }}
+              animate={{
+                opacity: 1,
+                y: 0,
+                boxShadow: ctxConverging
+                  ? [
+                      "0 80px 160px -30px rgba(0,0,0,0.8), 0 0 0 1px rgba(167,139,250,0.5) inset, 0 0 80px rgba(167,139,250,0.45)",
+                      "0 80px 160px -30px rgba(0,0,0,0.8), 0 0 0 2px rgba(34,211,238,0.6) inset, 0 0 120px rgba(34,211,238,0.55)",
+                      "0 80px 160px -30px rgba(0,0,0,0.8), 0 0 0 1px rgba(244,114,182,0.5) inset, 0 0 80px rgba(244,114,182,0.45)",
+                    ]
+                  : "0 80px 160px -30px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.06) inset, 0 0 60px rgba(167,139,250,0.08)",
+              }}
+              transition={
+                ctxConverging
+                  ? { duration: 1.6, repeat: Infinity, ease: "easeInOut" }
+                  : { duration: 1, ease: [0.22, 1, 0.36, 1] }
+              }
             >
               {/* Title bar */}
               <div className="flex items-center justify-between px-4 py-2.5 border-b border-white/5 bg-black/40">
@@ -488,14 +573,41 @@ export default function CinematicScene() {
         </motion.div>
 
         {/* Playback controls */}
-        <div className="absolute bottom-6 inset-x-0 z-50 flex justify-center pointer-events-none">
-          <div className="glass rounded-full px-2 py-1.5 flex items-center gap-1 pointer-events-auto">
+        <div className="absolute bottom-5 inset-x-0 z-50 flex flex-col items-center gap-2 pointer-events-none">
+          {/* Step label */}
+          <div
+            key={currentStep.id}
+            className="pointer-events-auto glass rounded-full px-3 py-1 mono text-[11px] text-white/85"
+          >
+            <span className="text-white/45 mr-2">
+              {STEPS[level].findIndex((s) => s.id === currentStep.id) + 1}/{STEPS[level].length}
+            </span>
+            {currentStep.label[i18nLang as "es" | "en"] || currentStep.label.es}
+          </div>
+
+          <div className="glass rounded-full px-1.5 py-1.5 flex items-center gap-1 pointer-events-auto">
+            <button
+              onClick={stepPrev}
+              className="h-9 w-9 rounded-full hover:bg-white/10 text-white/80 flex items-center justify-center transition"
+              aria-label="previous step"
+              title="paso anterior"
+            >
+              <ChevronLeft size={16} />
+            </button>
             <button
               onClick={() => (playing ? stopPlay() : startPlay())}
               className="h-9 w-9 rounded-full bg-white text-black flex items-center justify-center hover:bg-white/90 transition"
               aria-label={playing ? "pause" : "play"}
             >
               {playing ? <Pause size={14} /> : <Play size={14} />}
+            </button>
+            <button
+              onClick={stepNext}
+              className="h-9 w-9 rounded-full hover:bg-white/10 text-white/80 flex items-center justify-center transition"
+              aria-label="next step"
+              title="siguiente paso"
+            >
+              <ChevronRight size={16} />
             </button>
             <button
               onClick={resetToTop}
@@ -802,22 +914,79 @@ function ConvergenceBeam() {
       <svg className="absolute inset-0 w-full h-full" viewBox="0 0 1100 600" preserveAspectRatio="xMidYMid meet">
         <defs>
           <radialGradient id="beam" cx="50%" cy="50%">
-            <stop offset="0%" stopColor="#a78bfa" stopOpacity="0.7" />
+            <stop offset="0%" stopColor="#a78bfa" stopOpacity="0.85" />
+            <stop offset="50%" stopColor="#22d3ee" stopOpacity="0.5" />
             <stop offset="100%" stopColor="#a78bfa" stopOpacity="0" />
           </radialGradient>
         </defs>
         <motion.circle
-          cx="550"
-          cy="300"
-          r="180"
+          cx="550" cy="300" r="220"
           fill="url(#beam)"
-          initial={{ scale: 0.4, opacity: 0 }}
-          animate={{ scale: [0.4, 1.5, 0.7], opacity: [0, 1, 0] }}
-          transition={{ duration: 1.6, ease: "easeOut" }}
+          initial={{ scale: 0.3, opacity: 0 }}
+          animate={{ scale: [0.3, 1.7, 0.6], opacity: [0, 1, 0] }}
+          transition={{ duration: 2.4, ease: "easeOut" }}
+          style={{ transformOrigin: "550px 300px" }}
+        />
+        {/* Shockwave ring */}
+        <motion.circle
+          cx="550" cy="300" r="60"
+          fill="none" stroke="#a78bfa" strokeWidth="2"
+          initial={{ scale: 0.2, opacity: 0 }}
+          animate={{ scale: [0.2, 4, 5], opacity: [0, 0.6, 0] }}
+          transition={{ duration: 2.4, ease: "easeOut" }}
           style={{ transformOrigin: "550px 300px" }}
         />
       </svg>
     </motion.div>
+  );
+}
+
+function MergeBurst({ cards }: { cards: CtxCard[] }) {
+  // Each visible card emits ~8 particles that fly toward the chat panel center
+  // with each particle tinted by the card's ruleColor — visually expresses
+  // the rules "mixing" into the model's input.
+  return (
+    <div
+      className="pointer-events-none absolute left-1/2 top-1/2 z-25"
+      style={{ width: 0, height: 0 }}
+    >
+      {cards.flatMap((c) =>
+        Array.from({ length: 10 }).map((_, i) => {
+          const sign = c.side === "left" ? -1 : 1;
+          const startX = sign * 240;
+          const startY = (c.slot - 1) * 110;
+          const endX = 0;
+          const endY = (c.slot - 1) * 12;
+          const delay = i * 0.06 + c.slot * 0.05;
+          const dur = 0.8 + (i % 3) * 0.2;
+          const size = 3 + (i % 3);
+          return (
+            <motion.span
+              key={`${c.id}-${i}`}
+              className="absolute rounded-full"
+              style={{
+                width: size,
+                height: size,
+                background: c.ruleColor,
+                left: 0,
+                top: 0,
+                marginLeft: -size / 2,
+                marginTop: -size / 2,
+                boxShadow: `0 0 ${size * 4}px ${c.ruleColor}`,
+              }}
+              initial={{ x: startX, y: startY, opacity: 0, scale: 0.6 }}
+              animate={{
+                x: [startX, (startX + endX) / 2, endX],
+                y: [startY, (startY + endY) / 2 - 30, endY],
+                opacity: [0, 1, 0],
+                scale: [0.6, 1.2, 0.4],
+              }}
+              transition={{ duration: dur, delay, ease: "easeOut" }}
+            />
+          );
+        }),
+      )}
+    </div>
   );
 }
 
