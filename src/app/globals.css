@@ -15,7 +15,12 @@ html, body {
   color: #ededed;
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
-  overflow-x: hidden;
+}
+
+/* Use `clip` (not `hidden`) — `hidden` would make body a scroll container
+   and break `position: sticky` inside the document. */
+body {
+  overflow-x: clip;
 }
 
 html.lenis, html.lenis body { height: auto; }
