@@ -233,7 +233,7 @@ export default function CinematicScene() {
   const agent = AGENTS[agentId];
   const [vw, setVw] = useState(1024);
   const [focusedCard, setFocusedCard] = useState<string | null>(null);
-  const [stagePanelOpen, setStagePanelOpen] = useState(false);
+  const [stagePanelOpen, setStagePanelOpen] = useState(true);
   const [progress, setProgress] = useState(0);
   const outputPanelRef = useRef<HTMLDivElement>(null);
   const outputContentRef = useRef<HTMLDivElement>(null);
@@ -1178,9 +1178,11 @@ function StagePanel({
   return (
     <div
       className="absolute top-20 left-4 md:left-6 z-50 pointer-events-auto"
-      style={{ width: open ? 320 : "auto" }}
+      style={{ width: 320 }}
     >
       <div className="glass rounded-2xl overflow-hidden">
+        {/* Header — always visible — stage number + name + agent.
+            Click to expand the description. */}
         <button
           onClick={() => setOpen(!open)}
           className="w-full flex items-center gap-3 px-3 py-2 hover:bg-white/5 transition cursor-pointer"
@@ -1193,26 +1195,22 @@ function StagePanel({
               {stageIndex + 1}
             </span>
           </div>
-          {open ? (
-            <>
-              <div className="flex-1 min-w-0 text-left">
-                <div className="text-[13px] font-semibold text-white truncate">
-                  {stage.label[(lang as "es" | "en") || "es"]}
-                </div>
-                <div className="mono text-[10px] text-white/45 truncate">
-                  {stageIndex + 1}/{total} · {agent.name}
-                </div>
-              </div>
-              <span className="mono text-[12px] text-white/40 shrink-0 px-1">×</span>
-            </>
-          ) : (
-            <span className="mono text-[12px] text-white/40 shrink-0 pr-1">›</span>
-          )}
+          <div className="flex-1 min-w-0 text-left">
+            <div className="text-[13px] font-semibold text-white leading-tight">
+              {stage.label[(lang as "es" | "en") || "es"]}
+            </div>
+            <div className="mono text-[10px] text-white/45 truncate">
+              {stageIndex + 1}/{total} · {agent.name}
+            </div>
+          </div>
+          <span className="mono text-[14px] text-white/45 shrink-0 px-1">
+            {open ? "−" : "+"}
+          </span>
         </button>
 
         {open && (
           <div className="px-3 pb-2 pt-1 border-t border-white/5">
-            <p className="text-[12px] text-white/70 leading-relaxed min-h-[60px]">
+            <p className="text-[12px] text-white/70 leading-relaxed">
               {stage.description[(lang as "es" | "en") || "es"]}
             </p>
             {noHooksNote && (
