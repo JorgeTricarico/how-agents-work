@@ -447,17 +447,19 @@ export default function CinematicScene() {
         <ParallaxOrb x={drift3} color="#f472b6" top="38%" left="42%" size={380} blur={55} opacity={0.4} />
         <FloatingTokens />
 
-        {/* Hero headline — only visible at the very top of the section,
-            fully gone before the agent selector / stage panel appear,
-            so they never share screen space. */}
-        <motion.div
-          className="absolute top-0 inset-x-0 z-40 px-6 pt-12 md:pt-16 text-center pointer-events-none"
-          style={{ opacity: Math.max(0, 1 - progress * 18) }}
-        >
-          <h1 className="text-2xl md:text-4xl font-semibold tracking-tight leading-[1.05]">
-            {t.cinemaTitle1} <span className="gradient-text">{t.cinemaTitle2}</span>
-          </h1>
-        </motion.div>
+        {/* Hero headline — only mounted at the very start of the scroll,
+            removed from the DOM (not just opacity 0) once the user has
+            scrolled into the scene so it cannot possibly cover anything. */}
+        {progress < 0.06 && (
+          <motion.div
+            className="absolute top-0 inset-x-0 z-40 px-6 pt-12 md:pt-16 text-center pointer-events-none"
+            style={{ opacity: Math.max(0, 1 - progress * 18) }}
+          >
+            <h1 className="text-2xl md:text-4xl font-semibold tracking-tight leading-[1.05]">
+              {t.cinemaTitle1} <span className="gradient-text">{t.cinemaTitle2}</span>
+            </h1>
+          </motion.div>
+        )}
 
         {/* Agent selector — top-center, always visible */}
         <div
@@ -766,8 +768,7 @@ export default function CinematicScene() {
         {/* Playback controls — pinned to the very bottom of the viewport
             on its own row, with a subtle gradient mask above so it never
             sits on top of OutputPanel content. */}
-        <div className="absolute bottom-0 inset-x-0 z-50 pt-12 pb-4 flex flex-col items-center gap-2 pointer-events-none"
-             style={{ background: "linear-gradient(to top, rgba(7,7,10,0.9) 30%, transparent)" }}>
+        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
           <div className="glass rounded-full px-1.5 py-1.5 flex items-center gap-1 pointer-events-auto">
             <button
               onClick={stepPrev}
