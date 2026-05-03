@@ -421,28 +421,16 @@ export default function CinematicScene() {
         <ParallaxOrb x={drift3} color="#f472b6" top="38%" left="42%" size={380} blur={55} opacity={0.4} />
         <FloatingTokens />
 
-        {/* Top headline — fades out as scroll progresses so it never covers the stage */}
+        {/* Hero headline — only visible at the very top of the section,
+            fully gone before the agent selector / stage panel appear,
+            so they never share screen space. */}
         <motion.div
-          className="absolute top-0 inset-x-0 z-40 px-6 pt-10 md:pt-14 text-center pointer-events-none"
-          style={{ opacity: Math.max(0, 1 - progress * 14) }}
+          className="absolute top-0 inset-x-0 z-40 px-6 pt-12 md:pt-16 text-center pointer-events-none"
+          style={{ opacity: Math.max(0, 1 - progress * 18) }}
         >
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full glass mono text-[11px] text-white/70">
-            <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-            {t.cinemaBadge}
-          </div>
-          <h1 className="mt-4 text-2xl md:text-4xl font-semibold tracking-tight leading-[1.05]">
+          <h1 className="text-2xl md:text-4xl font-semibold tracking-tight leading-[1.05]">
             {t.cinemaTitle1} <span className="gradient-text">{t.cinemaTitle2}</span>
           </h1>
-        </motion.div>
-
-        {/* Tiny header that appears AFTER the headline fades — non-overlapping */}
-        <motion.div
-          className="absolute top-4 inset-x-0 z-40 flex justify-center pointer-events-none"
-          style={{ opacity: Math.max(0, Math.min(1, (progress - 0.06) * 14)) }}
-        >
-          <div className="glass rounded-full px-3 py-1 mono text-[10px] text-white/55">
-            {t.cinemaTitle1} {t.cinemaTitle2}
-          </div>
         </motion.div>
 
         {/* Agent selector — top-center, always visible */}
@@ -1668,15 +1656,16 @@ const TOKEN_LABELS = [
 ];
 
 function FloatingTokens() {
-  // Stable randoms per token, generated once with deterministic seed-ish mod
+  // Restrict to the lower half of the viewport so they don't crowd the
+  // top area where StagePanel / AgentSelector / lang toggle live.
   const items = useMemo(
     () =>
       TOKEN_LABELS.map((label, i) => {
-        const top = ((i * 71) % 90) + 4;       // 4..94
+        const top = 38 + ((i * 71) % 55);     // 38..93
         const left = ((i * 137) % 92) + 3;     // 3..95
-        const dur = 14 + (i % 6) * 3;          // 14..29s
+        const dur = 14 + (i % 6) * 3;
         const delay = (i % 7) * 1.4;
-        const drift = 14 + (i % 5) * 6;
+        const drift = 12 + (i % 5) * 5;
         const colors = ["#a78bfa", "#22d3ee", "#f472b6", "#fbbf24", "#34d399"];
         const color = colors[i % colors.length];
         return { label, top, left, dur, delay, drift, color };
