@@ -36,17 +36,17 @@ type CtxCard = {
   id: "system" | "claude" | "tools" | "env";
   side: "left" | "right";
   depth: number;
-  enter: number;     // scroll progress where it flies in
-  settle: number;    // when it reaches final position
-  converge: number;  // when it gets absorbed into model
-  yOffset: number;
+  enter: number;
+  settle: number;
+  converge: number;
+  yFactor: number; // multiplied by viewport-based unit
 };
 
 const CARDS: CtxCard[] = [
-  { id: "system", side: "left",  depth: 0, enter: 0.18, settle: 0.26, converge: 0.34, yOffset: -130 },
-  { id: "claude", side: "right", depth: 0, enter: 0.20, settle: 0.28, converge: 0.34, yOffset: -130 },
-  { id: "tools",  side: "left",  depth: 1, enter: 0.22, settle: 0.30, converge: 0.34, yOffset:  30 },
-  { id: "env",    side: "right", depth: 1, enter: 0.24, settle: 0.32, converge: 0.34, yOffset:  30 },
+  { id: "system", side: "left",  depth: 0, enter: 0.18, settle: 0.26, converge: 0.34, yFactor: -1.4 },
+  { id: "claude", side: "right", depth: 0, enter: 0.20, settle: 0.28, converge: 0.34, yFactor: -1.4 },
+  { id: "tools",  side: "left",  depth: 1, enter: 0.22, settle: 0.30, converge: 0.34, yFactor:  0.4 },
+  { id: "env",    side: "right", depth: 1, enter: 0.24, settle: 0.32, converge: 0.34, yFactor:  0.4 },
 ];
 
 // Beat windows in scroll progress (0..1)
@@ -82,6 +82,20 @@ function typed(s: string, p: number, start: number, end: number) {
 export default function CinematicScene() {
   const { t } = useLang();
   const containerRef = useRef<HTMLDivElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
+
+  const [vw, setVw] = useState(1024);
+  useEffect(() => {
+    const update = () => setVw(window.innerWidth);
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
+  const isMobile = vw < 720;
+  const cardWidth = isMobile ? 180 : 240;
+  // Half of useful horizontal travel — cards fly from this distance to the side
+  const lateralUnit = Math.min(440, Math.max(140, vw * 0.36));
+  const verticalUnit = isMobile ? 90 : 110;
 
   const { scrollYProgress } = useScroll({
     target: containerRef,
@@ -195,9 +209,10 @@ export default function CinematicScene() {
       <div className="sticky top-0 h-screen w-full overflow-hidden">
         {/* Parallax background layers */}
         <Stars yShift={bgShift} />
-        <ParallaxOrb x={drift1} color="#a78bfa" top="10%" left="8%" size={520} blur={80} />
-        <ParallaxOrb x={drift2} color="#22d3ee" top="60%" left="78%" size={420} blur={70} />
-        <ParallaxOrb x={drift3} color="#f472b6" top="35%" left="50%" size={300} blur={60} />
+        <ParallaxOrb x={drift1} color="#a78bfa" top="6%" left="-4%" size={620} blur={70} opacity={0.55} />
+        <ParallaxOrb x={drift2} color="#22d3ee" top="58%" left="72%" size={520} blur={70} opacity={0.5} />
+        <ParallaxOrb x={drift3} color="#f472b6" top="38%" left="42%" size={380} blur={55} opacity={0.4} />
+        <FloatingTokens />
 
         {/* Top headline */}
         <div className="absolute top-0 inset-x-0 z-30 px-6 pt-16 text-center pointer-events-none">
@@ -242,6 +257,10 @@ export default function CinematicScene() {
                 card={card}
                 progress={progress}
                 converging={ctxConverging}
+                lateralUnit={lateralUnit}
+                verticalUnit={verticalUnit}
+                cardWidth={cardWidth}
+                isMobile={isMobile}
               />
             ))}
 
@@ -466,10 +485,18 @@ function Card3D({
   card,
   progress,
   converging,
+  lateralUnit,
+  verticalUnit,
+  cardWidth,
+  isMobile,
 }: {
   card: CtxCard;
   progress: number;
   converging: boolean;
+  lateralUnit: number;
+  verticalUnit: number;
+  cardWidth: number;
+  isMobile: boolean;
 }) {
   const { t } = useLang();
   const data = t.ctx[card.id];
@@ -478,11 +505,12 @@ function Card3D({
   const entryT = (progress - card.enter) / (card.settle - card.enter);
   const ease = Math.min(1, Math.max(0, entryT));
 
-  const xBase = card.side === "left" ? -460 : 460;
-  const xOffset = card.depth * (card.side === "left" ? -40 : 40);
-  const yOffset = card.yOffset;
+  const sign = card.side === "left" ? -1 : 1;
+  const xBase = sign * lateralUnit;
+  const xOffset = sign * card.depth * (isMobile ? 14 : 36);
+  const yOffset = card.yFactor * verticalUnit;
   const z = -120 - card.depth * 80;
-  const rotY = card.side === "left" ? 22 : -22;
+  const rotY = sign * (isMobile ? 14 : 22);
 
   // animated values
   let opacity = 0;
@@ -527,8 +555,8 @@ function Card3D({
     <motion.div
       className="absolute top-1/2 left-1/2 pointer-events-none"
       style={{
-        width: 240,
-        marginLeft: -120,
+        width: cardWidth,
+        marginLeft: -cardWidth / 2,
         marginTop: -80,
         transformStyle: "preserve-3d",
         zIndex: 10 - card.depth,
@@ -680,6 +708,7 @@ function ParallaxOrb({
   left,
   size,
   blur,
+  opacity = 0.4,
 }: {
   x: MotionValue<number>;
   color: string;
@@ -687,6 +716,7 @@ function ParallaxOrb({
   left: string;
   size: number;
   blur: number;
+  opacity?: number;
 }) {
   return (
     <motion.div
@@ -698,10 +728,79 @@ function ParallaxOrb({
         width: size,
         height: size,
         x,
-        background: `radial-gradient(closest-side, ${color}40, ${color}10 50%, transparent 70%)`,
+        opacity,
+        background: `radial-gradient(closest-side, ${color}, ${color}33 45%, transparent 70%)`,
         filter: `blur(${blur}px)`,
+        mixBlendMode: "screen",
       }}
     />
+  );
+}
+
+const TOKEN_LABELS = [
+  "system_prompt",
+  "AGENTS.md",
+  "CLAUDE.md",
+  "tools.json",
+  "PreToolUse",
+  "PostToolUse",
+  "Edit",
+  "Bash",
+  "tool_result",
+  "compaction",
+  "iter++",
+  "stdin",
+  "stdout",
+  "exit 0",
+  "git status",
+];
+
+function FloatingTokens() {
+  // Stable randoms per token, generated once with deterministic seed-ish mod
+  const items = useMemo(
+    () =>
+      TOKEN_LABELS.map((label, i) => {
+        const top = ((i * 71) % 90) + 4;       // 4..94
+        const left = ((i * 137) % 92) + 3;     // 3..95
+        const dur = 14 + (i % 6) * 3;          // 14..29s
+        const delay = (i % 7) * 1.4;
+        const drift = 14 + (i % 5) * 6;
+        const colors = ["#a78bfa", "#22d3ee", "#f472b6", "#fbbf24", "#34d399"];
+        const color = colors[i % colors.length];
+        return { label, top, left, dur, delay, drift, color };
+      }),
+    [],
+  );
+
+  return (
+    <div className="pointer-events-none absolute inset-0 overflow-hidden">
+      {items.map((it, idx) => (
+        <motion.span
+          key={idx}
+          className="absolute mono text-[10px] whitespace-nowrap"
+          style={{
+            top: `${it.top}%`,
+            left: `${it.left}%`,
+            color: `${it.color}aa`,
+            textShadow: `0 0 12px ${it.color}66`,
+            opacity: 0.45,
+          }}
+          animate={{
+            y: [0, -it.drift, 0, it.drift, 0],
+            x: [0, it.drift / 2, 0, -it.drift / 2, 0],
+            opacity: [0.25, 0.55, 0.35, 0.5, 0.25],
+          }}
+          transition={{
+            duration: it.dur,
+            repeat: Infinity,
+            ease: "easeInOut",
+            delay: it.delay,
+          }}
+        >
+          {it.label}
+        </motion.span>
+      ))}
+    </div>
   );
 }
 
