@@ -17,11 +17,9 @@ html, body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Use `clip` (not `hidden`) — `hidden` would make body a scroll container
-   and break `position: sticky` inside the document. */
-body {
-  overflow-x: clip;
-}
+/* Do NOT set overflow on html/body. Any non-visible value here can promote
+   them to scroll containers and break `position: sticky` descendants. Each
+   section clips its own overflow internally. */
 
 html.lenis, html.lenis body { height: auto; }
 .lenis.lenis-smooth { scroll-behavior: auto !important; }

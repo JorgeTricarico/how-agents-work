@@ -3,8 +3,8 @@
 import {
   motion,
   AnimatePresence,
+  useScroll,
   useTransform,
-  useMotionValue,
   useMotionValueEvent,
   MotionValue,
 } from "framer-motion";
@@ -97,36 +97,11 @@ export default function CinematicScene() {
   const lateralUnit = Math.min(440, Math.max(140, vw * 0.36));
   const verticalUnit = isMobile ? 90 : 110;
 
-  // Manual scroll-progress: 0 when section top hits viewport top,
-  // 1 when section bottom hits viewport bottom. Avoids framer-motion
-  // useScroll quirks with non-static ancestors / Lenis.
-  const scrollYProgress = useMotionValue(0);
+  const { scrollYProgress } = useScroll({
+    target: containerRef,
+    offset: ["start start", "end end"],
+  });
   const [progress, setProgress] = useState(0);
-
-  useEffect(() => {
-    const compute = () => {
-      const el = containerRef.current;
-      if (!el) return;
-      const rect = el.getBoundingClientRect();
-      const total = rect.height - window.innerHeight;
-      if (total <= 0) {
-        scrollYProgress.set(0);
-        setProgress(0);
-        return;
-      }
-      const p = Math.max(0, Math.min(1, -rect.top / total));
-      scrollYProgress.set(p);
-      setProgress(p);
-    };
-    compute();
-    window.addEventListener("scroll", compute, { passive: true });
-    window.addEventListener("resize", compute);
-    return () => {
-      window.removeEventListener("scroll", compute);
-      window.removeEventListener("resize", compute);
-    };
-  }, [scrollYProgress]);
-
   useMotionValueEvent(scrollYProgress, "change", (v) => setProgress(v));
 
   // Auto-play: animates window scroll from section top → bottom over ~50s
