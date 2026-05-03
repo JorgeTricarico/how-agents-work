@@ -319,11 +319,13 @@ export default function CinematicScene() {
     setPlaying(false);
   };
 
-  // Animates the scroll from current position to a specific target
-  // progress (0..1 within the cinematic), then auto-stops. Used by
-  // step nav and the play button — every action is "play to next
-  // beat", not "play to end".
-  const playToProgress = (targetProgress: number) => {
+  // Animates the scroll from current to a target progress.
+  // mode 'step' = capped quick hop for ←/→ (max 4s).
+  // mode 'continuous' = full slow playback (~120s for the whole section).
+  const playToProgress = (
+    targetProgress: number,
+    mode: "step" | "continuous" = "step",
+  ) => {
     if (!containerRef.current) return;
     stopPlay();
     const rect = containerRef.current.getBoundingClientRect();
@@ -334,9 +336,12 @@ export default function CinematicScene() {
     const fromY = window.scrollY;
     const distance = Math.abs(toY - fromY);
     if (distance < 2) return;
-    // Pixels-per-second-ish pace: 1 step (~6% of section height) lands
-    // in ~2.4s. Clamp to a comfortable range.
-    const duration = Math.max(900, Math.min(4000, (distance / total) * 30000));
+    // step:       ~30s for full distance, capped at 4s per hop
+    // continuous: ~120s for full distance, no cap (slow playback)
+    const duration =
+      mode === "continuous"
+        ? Math.max(2000, (distance / total) * 120000)
+        : Math.max(900, Math.min(4000, (distance / total) * 30000));
     setPlaying(true);
     playStartRef.current = { ts: performance.now(), fromY, toY };
 
@@ -344,8 +349,14 @@ export default function CinematicScene() {
       const s = playStartRef.current;
       if (!s) return;
       const k = Math.min(1, (now - s.ts) / duration);
-      // easeInOutCubic
-      const eased = k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+      // For continuous, linear pace (matches a video player). For
+      // single-step hops, ease in/out.
+      const eased =
+        mode === "continuous"
+          ? k
+          : k < 0.5
+            ? 4 * k * k * k
+            : 1 - Math.pow(-2 * k + 2, 3) / 2;
       window.scrollTo(0, s.fromY + (s.toY - s.fromY) * eased);
       if (k >= 1) {
         stopPlay();
@@ -356,15 +367,9 @@ export default function CinematicScene() {
     playRafRef.current = requestAnimationFrame(tick);
   };
 
-  // Play button now means: play forward to the NEXT anchor only.
+  // Play button: continuous slow playback to the end. Pause = real pause.
   const startPlay = () => {
-    const next = STAGES.find((a) => a.at > progress + 0.005);
-    if (next) {
-      playToProgress(next.at);
-    } else {
-      // Already past the last anchor — play to the very end of the section
-      playToProgress(1.0);
-    }
+    playToProgress(1.0, "continuous");
   };
 
   const resetToTop = () => {
@@ -663,33 +668,21 @@ export default function CinematicScene() {
                   display: "flex",
                   flexDirection: "column",
                 }}
-                initial={{ opacity: 0, y: 30 }}
+                initial={false}
                 animate={{
-                  // Stays hidden until the prompt is fully assembled and
-                  // ready to be sent (stage 6, Final prompt). Fades in
-                  // gracefully then.
-                  opacity: progress < 0.36 ? 0 : 1,
-                  y: progress < 0.36 ? 30 : 0,
-                  // After the orb has merged (progress > 0.46), the
-                  // OutputPanel keeps a static violet glow — no
-                  // cycling, no animation. Conveys 'the orb's energy
-                  // now lives here' without flashing forever.
+                  // Smooth fade-in over progress 0.30 → 0.38 instead of a
+                  // binary on/off. Stops the panel from popping in/out
+                  // when the user scrolls or pauses near the threshold.
+                  opacity: Math.max(0, Math.min(1, (progress - 0.30) / 0.08)),
+                  y: progress < 0.30 ? 30 : Math.max(0, 30 - (progress - 0.30) * 380),
+                  // Static shadow that varies with progress — never loops.
+                  // Calm violet glow once the orb has merged.
                   boxShadow:
                     progress >= 0.46
                       ? "0 40px 80px -25px rgba(0,0,0,0.7), 0 0 0 1px rgba(167,139,250,0.55) inset, 0 0 50px rgba(167,139,250,0.25)"
-                      : ctxConverging
-                        ? [
-                            "0 40px 80px -25px rgba(0,0,0,0.7), 0 0 0 1px rgba(167,139,250,0.5) inset",
-                            "0 40px 80px -25px rgba(0,0,0,0.7), 0 0 0 2px rgba(34,211,238,0.6) inset",
-                            "0 40px 80px -25px rgba(0,0,0,0.7), 0 0 0 1px rgba(244,114,182,0.5) inset",
-                          ]
-                        : "0 40px 80px -25px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.06) inset",
+                      : "0 40px 80px -25px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.08) inset",
                 }}
-                transition={
-                  ctxConverging && progress < 0.46
-                    ? { duration: 1.6, repeat: Infinity, ease: "easeInOut" }
-                    : { duration: 0.8 }
-                }
+                transition={{ duration: 0.6, ease: "easeOut" }}
               >
                 <div className="px-4 py-2 border-b border-white/5 mono text-[10px] uppercase tracking-wider text-white/45 flex items-center justify-between shrink-0">
                   <span>output · respuesta del agente</span>
