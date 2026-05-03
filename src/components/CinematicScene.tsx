@@ -721,10 +721,10 @@ export default function CinematicScene() {
                               </span>
                               <span className="text-white/40">id: tu_01k7…</span>
                             </div>
-                            <pre className="px-3 py-2 text-white/80 leading-relaxed whitespace-pre-wrap">{`{
-  "path": "CHANGELOG.md",
-  "old_string": "## [2.3.1] - 2026-04-12",
-  "new_string": "## [2.4.0] - …"
+                            <pre className="px-3 py-2 text-white/80 leading-relaxed whitespace-pre-wrap break-all">{`{
+  "path": "header.tsx",
+  "old_string": "</nav>",
+  "new_string": "  <LogoutButton/>\\n</nav>"
 }`}</pre>
                           </div>
 
@@ -754,9 +754,9 @@ export default function CinematicScene() {
 
                           {streamLines.length > 0 && (
                             <DiffView
-                              file="CHANGELOG.md"
-                              plus={6}
-                              minus={0}
+                              file="header.tsx"
+                              plus={4}
+                              minus={1}
                               visibleLines={streamLines.length}
                             />
                           )}
@@ -960,13 +960,24 @@ function Card3D({
           className="px-3 py-2 flex items-center gap-2 border-b"
           style={{ borderColor: "rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.02)" }}
         >
-          <FileText size={12} style={{ color: card.ruleColor }} />
-          <span className="text-[13px] font-semibold text-white">{data.label}</span>
+          <FileText size={12} className="shrink-0" style={{ color: card.ruleColor }} />
+          <span
+            className="text-[12px] font-semibold text-white min-w-0"
+            style={{ wordBreak: "break-all", lineHeight: 1.25 }}
+          >
+            {data.label}
+          </span>
         </div>
-        <pre className="px-3 py-2 mono text-[11px] text-white/80 whitespace-pre-wrap leading-relaxed">
+        <pre
+          className="px-3 py-2 mono text-[11px] text-white/80 whitespace-pre-wrap leading-relaxed"
+          style={{ wordBreak: "break-word", overflowWrap: "anywhere" }}
+        >
           {data.body}
         </pre>
-        <div className="px-3 py-1.5 mono text-[10px] text-white/45 border-t border-white/5">
+        <div
+          className="px-3 py-1.5 mono text-[10px] text-white/45 border-t border-white/5"
+          style={{ wordBreak: "break-all" }}
+        >
           {data.source}
         </div>
       </div>
@@ -981,16 +992,16 @@ type DiffLine =
   | { kind: "plus"; text: string };
 
 const DIFF_LINES: DiffLine[] = [
-  { kind: "hunk",    text: "@@ -1,4 +1,10 @@" },
-  { kind: "context", text: "# Changelog" },
-  { kind: "context", text: "" },
-  { kind: "plus",    text: "## [2.4.0] - 2026-05-03" },
-  { kind: "plus",    text: "### Added" },
-  { kind: "plus",    text: "- Retry logic for failed API calls" },
-  { kind: "plus",    text: "### Fixed" },
-  { kind: "plus",    text: "- Memory leak in session handler" },
-  { kind: "plus",    text: "" },
-  { kind: "context", text: "## [2.3.1] - 2026-04-12" },
+  { kind: "hunk",    text: "@@ -10,5 +10,8 @@" },
+  { kind: "context", text: "function Header() {" },
+  { kind: "context", text: "  return (" },
+  { kind: "context", text: "    <nav>" },
+  { kind: "context", text: "      <Logo/>" },
+  { kind: "minus",   text: "    </nav>" },
+  { kind: "plus",    text: "      <LogoutButton/>" },
+  { kind: "plus",    text: "    </nav>" },
+  { kind: "context", text: "  );" },
+  { kind: "context", text: "}" },
 ];
 
 function DiffView({

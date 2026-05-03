@@ -115,15 +115,15 @@ const ES: Dict = {
   postPrettier: "prettier · limpio",
   postTsc: "tsc · 0 errores",
   postAudit: "auditoría · registrado",
-  userMsg: "Agregá una entrada al CHANGELOG.md para la versión v2.4.0.",
+  userMsg: "Agregá un botón de cerrar sesión al header.",
   streamLines: [
-    "Leyendo CHANGELOG.md…",
-    "Encontré la última entrada: v2.3.1.",
-    "Insertando sección v2.4.0 al inicio.",
-    "Aplicado +6 −0",
+    "Leyendo header.tsx…",
+    "Encontré el <nav> en la línea 12.",
+    "Insertando <LogoutButton/> al final.",
+    "Aplicado +4 −1",
   ],
   assistMsg:
-    "Listo. Agregué la entrada v2.4.0 con las secciones Added y\nFixed. La fecha es la de hoy y respeté el formato Keep a\nChangelog que ya usabas.",
+    "Listo. Agregué el botón de cerrar sesión al final del nav del\nheader. Llama a auth.signOut() y redirige a /login.",
   ctx: {
     system: {
       label: "system prompt",
@@ -299,15 +299,15 @@ const EN: Dict = {
   postPrettier: "prettier · clean",
   postTsc: "tsc · 0 errors",
   postAudit: "audit · logged",
-  userMsg: "Add a CHANGELOG.md entry for the v2.4.0 release.",
+  userMsg: "Add a logout button to the header.",
   streamLines: [
-    "Reading CHANGELOG.md…",
-    "Found latest entry: v2.3.1.",
-    "Inserting v2.4.0 section at the top.",
-    "Patched +6 −0",
+    "Reading header.tsx…",
+    "Found <nav> on line 12.",
+    "Inserting <LogoutButton/> at the end.",
+    "Patched +4 −1",
   ],
   assistMsg:
-    "Done. Added a v2.4.0 entry with Added and Fixed sections,\ndated today, matching the Keep a Changelog format you were\nalready using.",
+    "Done. Added a logout button at the end of the header nav. It\ncalls auth.signOut() and redirects to /login.",
   ctx: {
     system: {
       label: "system prompt",
