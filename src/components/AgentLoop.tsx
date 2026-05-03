@@ -11,101 +11,28 @@ import {
   Play,
   Pause,
 } from "lucide-react";
+import { useLang } from "@/lib/i18n";
 
-type Step = {
-  id: string;
-  title: string;
-  short: string;
-  description: string;
-  icon: React.ReactNode;
-  color: string;
-  details: string[];
-};
-
-const steps: Step[] = [
-  {
-    id: "ctx",
-    title: "1. Context Assembly",
-    short: "Read AGENTS.md, CLAUDE.md, project files, recent edits.",
-    description:
-      "The harness gathers everything the model needs to know before it sees your prompt.",
-    icon: <FileText size={22} />,
-    color: "#a78bfa",
-    details: [
-      "Loads system prompt (vendor-defined, fixed).",
-      "Reads project rules: AGENTS.md, CLAUDE.md, .cursorrules, copilot-instructions.md.",
-      "Inlines tool schemas (Read, Edit, Bash, Grep, …) so the model knows what it can call.",
-      "Adds environment context: cwd, git status, OS, recent diffs.",
-    ],
-  },
-  {
-    id: "intent",
-    title: "2. Intent + PreToolUse hook",
-    short: "Model picks a tool. Hook intercepts before it runs.",
-    description:
-      "A user-defined PreToolUse hook can inspect, modify, or block the call.",
-    icon: <ShieldAlert size={22} />,
-    color: "#fbbf24",
-    details: [
-      "Model emits a structured tool_use block with arguments.",
-      "PreToolUse hook receives JSON on stdin; can deny (exit 2) or allow.",
-      "Common policies: block writes to /etc, require approval for git push, redact secrets.",
-      "If denied, the message goes back to the model so it can rethink.",
-    ],
-  },
-  {
-    id: "exec",
-    title: "3. Tool execution",
-    short: "Sandboxed side effects: files, shell, network.",
-    description:
-      "The actual work — and where things diverge across agents.",
-    icon: <Wrench size={22} />,
-    color: "#22d3ee",
-    details: [
-      "Tool runs in the harness, not the model. Output is captured.",
-      "stdout, stderr, exit code, and any artifact paths are collected.",
-      "Errors are returned as a tool_result, not raised — the model handles them.",
-    ],
-  },
-  {
-    id: "post",
-    title: "4. PostToolUse hook + audit",
-    short: "Lint, format, log, react to outcome.",
-    description:
-      "After the tool runs, hooks observe and the model receives the result.",
-    icon: <CheckCircle size={22} />,
-    color: "#34d399",
-    details: [
-      "PostToolUse can run a formatter, type-check, or block-on-failure.",
-      "Audit logs capture: what was called, by whom, with what args, what changed.",
-      "Tool result is appended to the conversation as a new message.",
-    ],
-  },
-  {
-    id: "loop",
-    title: "5. Re-prompt the model (loop)",
-    short: "Back to the top with new state, until done.",
-    description:
-      "The agent isn't a single call — it's a tight loop until a stop condition.",
-    icon: <Repeat size={22} />,
-    color: "#f472b6",
-    details: [
-      "Updated context (now with tool_result) is sent back to the model.",
-      "Loop ends when: model emits a final answer, hits a budget, or is interrupted.",
-      "Long sessions trigger compaction: older turns get summarized to free tokens.",
-    ],
-  },
+const STEP_META = [
+  { id: "ctx", icon: <FileText size={22} />, color: "#a78bfa" },
+  { id: "intent", icon: <ShieldAlert size={22} />, color: "#fbbf24" },
+  { id: "exec", icon: <Wrench size={22} />, color: "#22d3ee" },
+  { id: "post", icon: <CheckCircle size={22} />, color: "#34d399" },
+  { id: "loop", icon: <Repeat size={22} />, color: "#f472b6" },
 ];
 
 export default function AgentLoop() {
+  const { t } = useLang();
   const [active, setActive] = useState(0);
   const [playing, setPlaying] = useState(true);
 
+  const steps = t.loopSteps.map((s, i) => ({ ...s, ...STEP_META[i] }));
+
   useEffect(() => {
     if (!playing) return;
-    const id = setInterval(() => setActive((p) => (p + 1) % steps.length), 4200);
+    const id = setInterval(() => setActive((p) => (p + 1) % steps.length), 6500);
     return () => clearInterval(id);
-  }, [playing]);
+  }, [playing, steps.length]);
 
   const step = steps[active];
 
@@ -116,9 +43,9 @@ export default function AgentLoop() {
     >
       <div className="max-w-6xl w-full">
         <Header
-          eyebrow="01 · the loop"
-          title="An agent is a loop, not a call"
-          subtitle="Every coding agent — Claude Code, Cursor, Copilot, Aider — runs the same five-step cycle. The interesting differences live in steps 1, 2 and 4."
+          eyebrow={t.loopEyebrow}
+          title={t.loopTitle}
+          subtitle={t.loopSubtitle}
         />
 
         <div className="grid lg:grid-cols-[1fr_1.1fr] gap-10 lg:gap-16 items-start">
@@ -171,7 +98,7 @@ export default function AgentLoop() {
                         <h3 className="font-semibold text-base">{s.title}</h3>
                         {isActive && (
                           <span className="mono text-[10px] text-white/50">
-                            running…
+                            {t.loopRunning}
                           </span>
                         )}
                       </div>
@@ -188,13 +115,13 @@ export default function AgentLoop() {
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass text-sm hover:bg-white/10 transition"
               >
                 {playing ? <Pause size={16} /> : <Play size={16} />}
-                {playing ? "Pause" : "Auto-advance"}
+                {playing ? t.loopPause : t.loopAuto}
               </button>
               <button
                 onClick={() => setActive((p) => (p + 1) % steps.length)}
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-full glass text-sm hover:bg-white/10 transition"
               >
-                Next step
+                {t.loopNext}
               </button>
             </div>
           </div>
@@ -259,8 +186,8 @@ export default function AgentLoop() {
 
                   <div className="mt-6 grid grid-cols-3 gap-2 text-[11px] mono">
                     <Stat label="iter" value={`${active + 1}/${steps.length}`} />
-                    <Stat label="cost" value={fakeCost(active)} />
-                    <Stat label="tokens" value={fakeTokens(active)} />
+                    <Stat label={t.cost} value={fakeCost(active)} />
+                    <Stat label={t.tokens} value={fakeTokens(active)} />
                   </div>
                 </div>
               </motion.div>

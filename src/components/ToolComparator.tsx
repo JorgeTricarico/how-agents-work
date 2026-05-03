@@ -3,6 +3,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { useState } from "react";
 import { Header } from "./AgentLoop";
+import { useLang } from "@/lib/i18n";
 
 type Tool = {
   id: string;
@@ -79,6 +80,7 @@ const TOOLS: Tool[] = [
 ];
 
 export default function ToolComparator() {
+  const { t: i18n } = useLang();
   const [active, setActive] = useState(TOOLS[0].id);
   const t = TOOLS.find((x) => x.id === active)!;
 
@@ -89,9 +91,9 @@ export default function ToolComparator() {
     >
       <div className="max-w-6xl w-full">
         <Header
-          eyebrow="03 · the comparison"
-          title="Same loop, different fuel"
-          subtitle="Every agent reads project rules, exposes tools, and (sometimes) lets you hook the lifecycle. Here's exactly what changes between the four big ones."
+          eyebrow={i18n.cmpEyebrow}
+          title={i18n.cmpTitle}
+          subtitle={i18n.cmpSubtitle}
         />
 
         <div className="flex flex-wrap gap-2 mb-6">
@@ -131,7 +133,7 @@ export default function ToolComparator() {
             transition={{ duration: 0.35 }}
             className="grid lg:grid-cols-3 gap-5"
           >
-            <Card title="Rule files" color={t.color}>
+            <Card title={i18n.cmpRules} color={t.color}>
               <div className="space-y-3">
                 {t.rules.map((r, i) => (
                   <motion.div
@@ -160,7 +162,7 @@ export default function ToolComparator() {
               </div>
             </Card>
 
-            <Card title="Tools exposed" color={t.color}>
+            <Card title={i18n.cmpToolsExposed} color={t.color}>
               <div className="flex flex-wrap gap-1.5">
                 {t.tools.map((tool, i) => (
                   <motion.span
@@ -175,16 +177,16 @@ export default function ToolComparator() {
                 ))}
               </div>
               <div className="mt-5 mono text-[11px] text-white/45 uppercase tracking-wide mb-2">
-                hooks / lifecycle
+                {i18n.cmpHooks}
               </div>
               <p className="text-sm text-white/75">{t.hooks}</p>
             </Card>
 
-            <Card title="What's special" color={t.color}>
+            <Card title={i18n.cmpSpecial} color={t.color}>
               <p className="text-sm text-white/80 leading-relaxed">{t.notes}</p>
               <div className="mt-5 grid grid-cols-2 gap-2">
-                <Stat k="vendor" v={t.vendor} />
-                <Stat k="rule files" v={String(t.rules.length)} />
+                <Stat k={i18n.cmpVendor} v={t.vendor} />
+                <Stat k={i18n.cmpRuleFiles} v={String(t.rules.length)} />
               </div>
             </Card>
           </motion.div>

@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useState } from "react";
 import { Header } from "./AgentLoop";
 import { Shield, Wrench, ScrollText, Ban, Check } from "lucide-react";
+import { useLang } from "@/lib/i18n";
 
 type Frame = {
   stage: "intent" | "pre" | "tool" | "post" | "log";
@@ -55,25 +56,31 @@ tsc --noEmit
   ],
 };
 
-const STAGE_META = {
-  intent: { color: "#a78bfa", icon: <Wrench size={16} />, label: "intent" },
-  pre: { color: "#fbbf24", icon: <Shield size={16} />, label: "pre-hook" },
-  tool: { color: "#22d3ee", icon: <Wrench size={16} />, label: "tool" },
-  post: { color: "#34d399", icon: <Check size={16} />, label: "post-hook" },
-  log: { color: "#f472b6", icon: <ScrollText size={16} />, label: "audit" },
+const STAGE_META: Record<
+  "intent" | "pre" | "tool" | "post" | "log",
+  { color: string; icon: React.ReactNode }
+> = {
+  intent: { color: "#a78bfa", icon: <Wrench size={16} /> },
+  pre: { color: "#fbbf24", icon: <Shield size={16} /> },
+  tool: { color: "#22d3ee", icon: <Wrench size={16} /> },
+  post: { color: "#34d399", icon: <Check size={16} /> },
+  log: { color: "#f472b6", icon: <ScrollText size={16} /> },
 };
 
 export default function HookFlow() {
+  const { t: i18n } = useLang();
   const scenarios = Object.keys(SCENARIOS);
   const [active, setActive] = useState(scenarios[0]);
   const [step, setStep] = useState(0);
   const frames = SCENARIOS[active];
+  const labelFor = (id: string) =>
+    i18n.hkScenarios.find((s) => s.id === id)?.label || id;
 
   useEffect(() => {
     setStep(0);
     const id = setInterval(() => {
       setStep((s) => (s + 1) % (frames.length + 1));
-    }, 2200);
+    }, 3500);
     return () => clearInterval(id);
   }, [active, frames.length]);
 
@@ -86,9 +93,9 @@ export default function HookFlow() {
     >
       <div className="max-w-6xl w-full">
         <Header
-          eyebrow="04 · the hooks"
-          title="Hooks: where you put the guardrails"
-          subtitle="Hooks are shell commands the harness runs around every tool call. They can block, mutate, format, log — pure stdin/stdout. Pick a scenario:"
+          eyebrow={i18n.hkEyebrow}
+          title={i18n.hkTitle}
+          subtitle={i18n.hkSubtitle}
         />
 
         <div className="flex flex-wrap gap-2 mb-6">
@@ -102,7 +109,7 @@ export default function HookFlow() {
                   : "border-white/10 text-white/60 hover:bg-white/5"
               }`}
             >
-              {s}
+              {labelFor(s)}
             </button>
           ))}
         </div>
@@ -131,7 +138,7 @@ export default function HookFlow() {
                         {m.icon}
                       </div>
                       <div className="mono text-[11px] uppercase tracking-wide text-white/60">
-                        {m.label}
+                        {i18n.hkStages[k]}
                       </div>
                       {i < 4 && (
                         <div className="hidden md:block flex-1" />
@@ -171,7 +178,7 @@ export default function HookFlow() {
                         >
                           {m.icon}
                           <span className="uppercase tracking-wide">
-                            {m.label}
+                            {i18n.hkStages[f.stage]}
                           </span>
                           <span className="text-white/30">·</span>
                           <span className="text-white/70">{f.title}</span>
@@ -180,12 +187,12 @@ export default function HookFlow() {
                           {f.status === "blocked" ? (
                             <>
                               <Ban size={12} className="text-red-400" />
-                              <span className="text-red-400">DENY</span>
+                              <span className="text-red-400">{i18n.hkDeny}</span>
                             </>
                           ) : (
                             <>
                               <Check size={12} className="text-emerald-400" />
-                              <span className="text-emerald-400">OK</span>
+                              <span className="text-emerald-400">{i18n.hkOk}</span>
                             </>
                           )}
                         </span>
@@ -200,7 +207,7 @@ export default function HookFlow() {
 
               {step === 0 && (
                 <div className="text-center py-16 text-white/40 mono text-sm">
-                  press play (or wait) to step through the lifecycle…
+                  {i18n.hkPressPlay}
                 </div>
               )}
             </div>
