@@ -234,6 +234,8 @@ export default function CinematicScene() {
   const [vw, setVw] = useState(1024);
   const [focusedCard, setFocusedCard] = useState<string | null>(null);
   const [stagePanelOpen, setStagePanelOpen] = useState(true);
+  const outputPanelRef = useRef<HTMLDivElement>(null);
+  const outputContentRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const update = () => setVw(window.innerWidth);
     update();
@@ -256,6 +258,22 @@ export default function CinematicScene() {
   });
   const [progress, setProgress] = useState(0);
   useMotionValueEvent(scrollYProgress, "change", (v) => setProgress(v));
+
+  // Auto-scroll the OutputPanel content to its bottom whenever new beats
+  // arrive (tool_use, pre-hook, diff, post-hook, assistant) so the latest
+  // line is always visible without the playback controls covering it.
+  useEffect(() => {
+    const el = outputContentRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  }, [
+    progress > W.toolCallShow,
+    progress > W.preHookFlash,
+    progress > W.toolStreamStart,
+    progress > W.toolStreamEnd,
+    progress > W.postHook,
+    progress > W.assistantStart,
+  ]);
 
   // Auto-play: animates window scroll from section top → bottom over ~50s
   const [playing, setPlaying] = useState(false);
@@ -595,6 +613,7 @@ export default function CinematicScene() {
                   edge of this panel (its containing block), giving the
                   beam a specific endpoint. */}
               <motion.div
+                ref={outputPanelRef}
                 className="rounded-2xl overflow-hidden relative"
                 style={{
                   background: "rgba(15,15,22,0.7)",
@@ -602,6 +621,9 @@ export default function CinematicScene() {
                   border: "1px solid rgba(255,255,255,0.06)",
                   boxShadow: "0 40px 80px -25px rgba(0,0,0,0.7)",
                   minHeight: 220,
+                  maxHeight: isMobile ? 240 : 300,
+                  display: "flex",
+                  flexDirection: "column",
                 }}
                 initial={{ opacity: 0, y: 30 }}
                 animate={{
@@ -621,11 +643,15 @@ export default function CinematicScene() {
                     : { duration: 0.9, delay: 0.15 }
                 }
               >
-                <div className="px-4 py-2 border-b border-white/5 mono text-[10px] uppercase tracking-wider text-white/45 flex items-center justify-between">
+                <div className="px-4 py-2 border-b border-white/5 mono text-[10px] uppercase tracking-wider text-white/45 flex items-center justify-between shrink-0">
                   <span>output · respuesta del agente</span>
                   <span className="text-white/30">← del modelo</span>
                 </div>
-                <div className="px-5 py-4 flex flex-col gap-4">
+                <div
+                  ref={outputContentRef}
+                  className="px-5 py-4 flex flex-col gap-4 overflow-y-auto flex-1"
+                  data-lenis-prevent
+                >
                   {!showToolCall && progress < W.assistantStart && (
                     <div className="mono text-[11px] text-white/30 py-3">
                       {progress < W.toolCallShow
@@ -737,8 +763,11 @@ export default function CinematicScene() {
           </motion.div>
         </motion.div>
 
-        {/* Playback controls */}
-        <div className="absolute bottom-5 inset-x-0 z-50 flex flex-col items-center gap-2 pointer-events-none">
+        {/* Playback controls — pinned to the very bottom of the viewport
+            on its own row, with a subtle gradient mask above so it never
+            sits on top of OutputPanel content. */}
+        <div className="absolute bottom-0 inset-x-0 z-50 pt-12 pb-4 flex flex-col items-center gap-2 pointer-events-none"
+             style={{ background: "linear-gradient(to top, rgba(7,7,10,0.9) 30%, transparent)" }}>
           <div className="glass rounded-full px-1.5 py-1.5 flex items-center gap-1 pointer-events-auto">
             <button
               onClick={stepPrev}
