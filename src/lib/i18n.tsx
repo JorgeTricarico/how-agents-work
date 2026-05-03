@@ -40,9 +40,16 @@ type Dict = {
   ctx: {
     system: { label: string; source: string; body: string };
     claude: { label: string; source: string; body: string };
+    skill: { label: string; source: string; body: string };
+    pathrule: { label: string; source: string; body: string };
     tools: { label: string; source: string; body: string };
     env: { label: string; source: string; body: string };
   };
+  ruleKindLabels: { ALWAYS: string; "PATH-SCOPED": string; "ON-DEMAND": string; RUNTIME: string };
+  injectsInto: string;
+
+  levelLabel: string;
+  levels: { id: 1 | 2 | 3; name: string; subtitle: string }[];
 
   // agent loop
   loopEyebrow: string;
@@ -120,15 +127,27 @@ const ES: Dict = {
   ctx: {
     system: {
       label: "system prompt",
-      source: "Anthropic · fijo",
+      source: "vendor · fijo",
       body:
-        "Sos un agente de código interactivo.\nUsá las herramientas disponibles. Sé conciso.\nNunca corras comandos destructivos\nsin confirmación.",
+        "Sos un agente de código interactivo.\nUsá las herramientas disponibles.\nSé conciso. Nunca corras comandos\ndestructivos sin confirmación.",
     },
     claude: {
-      label: "CLAUDE.md",
-      source: "./reglas del proyecto",
+      label: "AGENTS.md",
+      source: "siempre · raíz del repo",
       body:
-        "# Convenciones\n- TypeScript modo estricto.\n- Clases utilitarias de Tailwind.\n- vitest, sin mocks de DB.",
+        "# Convenciones\n- TypeScript estricto.\n- Tailwind utilitario.\n- vitest sin mocks de DB.",
+    },
+    pathrule: {
+      label: ".rules/api/*.mdc",
+      source: "applyTo: src/api/**",
+      body:
+        "# Solo cuando edita /api\n- Validar con zod.\n- Logs estructurados.\n- Sin try/catch tragones.",
+    },
+    skill: {
+      label: "skill: refactor",
+      source: "on-demand · invocada",
+      body:
+        '{ "name": "refactor",\n  "description": "Splits files,\n  renames symbols safely",\n  "steps": [...] }',
     },
     tools: {
       label: "tools.json",
@@ -141,6 +160,19 @@ const ES: Dict = {
       body: "cwd: ~/Github/how-agents-work\nbranch: main · limpio\nnode 20.20",
     },
   },
+  ruleKindLabels: {
+    ALWAYS: "siempre",
+    "PATH-SCOPED": "por ruta",
+    "ON-DEMAND": "bajo demanda",
+    RUNTIME: "en vivo",
+  },
+  injectsInto: "se inyecta",
+  levelLabel: "nivel",
+  levels: [
+    { id: 1, name: "Básico", subtitle: "Solo el flujo esencial: prompt + reglas + respuesta." },
+    { id: 2, name: "Intermedio", subtitle: "Agrega herramientas, skills y reglas por ruta." },
+    { id: 3, name: "Real", subtitle: "El sistema completo: hooks, auditoría, todo el ciclo." },
+  ],
 
   loopEyebrow: "01 · el ciclo",
   loopTitle: "Un agente es un loop, no una llamada",
@@ -279,15 +311,27 @@ const EN: Dict = {
   ctx: {
     system: {
       label: "system prompt",
-      source: "Anthropic · fixed",
+      source: "vendor · fixed",
       body:
-        "You are an interactive coding agent.\nUse the tools provided. Be concise.\nNever run destructive commands\nwithout confirmation.",
+        "You are an interactive coding agent.\nUse the tools provided.\nBe concise. Never run destructive\ncommands without confirmation.",
     },
     claude: {
-      label: "CLAUDE.md",
-      source: "./project rules",
+      label: "AGENTS.md",
+      source: "always · repo root",
       body:
-        "# Project conventions\n- TypeScript strict mode.\n- Tailwind utility classes.\n- vitest, no DB mocks.",
+        "# Conventions\n- TypeScript strict.\n- Tailwind utilities.\n- vitest, no DB mocks.",
+    },
+    pathrule: {
+      label: ".rules/api/*.mdc",
+      source: "applyTo: src/api/**",
+      body:
+        "# Only when editing /api\n- Validate with zod.\n- Structured logs.\n- No swallowing try/catch.",
+    },
+    skill: {
+      label: "skill: refactor",
+      source: "on-demand · invoked",
+      body:
+        '{ "name": "refactor",\n  "description": "Splits files,\n  renames symbols safely",\n  "steps": [...] }',
     },
     tools: {
       label: "tools.json",
@@ -300,6 +344,19 @@ const EN: Dict = {
       body: "cwd: ~/Github/how-agents-work\nbranch: main · clean\nnode 20.20",
     },
   },
+  ruleKindLabels: {
+    ALWAYS: "always",
+    "PATH-SCOPED": "path-scoped",
+    "ON-DEMAND": "on-demand",
+    RUNTIME: "runtime",
+  },
+  injectsInto: "injects",
+  levelLabel: "level",
+  levels: [
+    { id: 1, name: "Basic", subtitle: "Just the essential flow: prompt + rules + reply." },
+    { id: 2, name: "Intermediate", subtitle: "Adds tools, skills, and path-scoped rules." },
+    { id: 3, name: "Real", subtitle: "The full system: hooks, audit, every beat." },
+  ],
 
   loopEyebrow: "01 · the loop",
   loopTitle: "An agent is a loop, not a call",

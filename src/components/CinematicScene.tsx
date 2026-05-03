@@ -33,20 +33,23 @@ import { useLang } from "@/lib/i18n";
    ────────────────────────────────────────────────────────── */
 
 type CtxCard = {
-  id: "system" | "claude" | "tools" | "env";
+  id: "system" | "claude" | "skill" | "pathrule" | "tools" | "env";
   side: "left" | "right";
-  depth: number;
+  slot: number; // vertical slot index
   enter: number;
   settle: number;
   converge: number;
-  yFactor: number; // multiplied by viewport-based unit
+  ruleKind: "ALWAYS" | "PATH-SCOPED" | "ON-DEMAND" | "RUNTIME";
+  ruleColor: string;
 };
 
 const CARDS: CtxCard[] = [
-  { id: "system", side: "left",  depth: 0, enter: 0.18, settle: 0.26, converge: 0.34, yFactor: -1.4 },
-  { id: "claude", side: "right", depth: 0, enter: 0.20, settle: 0.28, converge: 0.34, yFactor: -1.4 },
-  { id: "tools",  side: "left",  depth: 1, enter: 0.22, settle: 0.30, converge: 0.34, yFactor:  0.4 },
-  { id: "env",    side: "right", depth: 1, enter: 0.24, settle: 0.32, converge: 0.34, yFactor:  0.4 },
+  { id: "system",   side: "left",  slot: 0, enter: 0.16, settle: 0.24, converge: 0.36, ruleKind: "ALWAYS",      ruleColor: "#a78bfa" },
+  { id: "claude",   side: "right", slot: 0, enter: 0.18, settle: 0.26, converge: 0.36, ruleKind: "ALWAYS",      ruleColor: "#22d3ee" },
+  { id: "pathrule", side: "left",  slot: 1, enter: 0.20, settle: 0.28, converge: 0.36, ruleKind: "PATH-SCOPED", ruleColor: "#f472b6" },
+  { id: "skill",    side: "right", slot: 1, enter: 0.22, settle: 0.30, converge: 0.36, ruleKind: "ON-DEMAND",   ruleColor: "#fbbf24" },
+  { id: "tools",    side: "left",  slot: 2, enter: 0.24, settle: 0.32, converge: 0.36, ruleKind: "ALWAYS",      ruleColor: "#34d399" },
+  { id: "env",      side: "right", slot: 2, enter: 0.26, settle: 0.34, converge: 0.36, ruleKind: "RUNTIME",     ruleColor: "#60a5fa" },
 ];
 
 // Beat windows in scroll progress (0..1)
@@ -79,11 +82,14 @@ function typed(s: string, p: number, start: number, end: number) {
   return s.slice(0, Math.floor(s.length * t));
 }
 
+type LevelId = 1 | 2 | 3;
+
 export default function CinematicScene() {
   const { t } = useLang();
   const containerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
 
+  const [level, setLevel] = useState<LevelId>(1);
   const [vw, setVw] = useState(1024);
   useEffect(() => {
     const update = () => setVw(window.innerWidth);
@@ -92,10 +98,11 @@ export default function CinematicScene() {
     return () => window.removeEventListener("resize", update);
   }, []);
   const isMobile = vw < 720;
-  const cardWidth = isMobile ? 180 : 240;
-  // Half of useful horizontal travel — cards fly from this distance to the side
-  const lateralUnit = Math.min(440, Math.max(140, vw * 0.36));
-  const verticalUnit = isMobile ? 90 : 110;
+  const cardWidth = isMobile ? 200 : 230;
+  // Chat panel is narrowed so cards land OUTSIDE its silhouette
+  const chatWidth = isMobile ? Math.min(360, vw * 0.86) : 560;
+  const lateralUnit = chatWidth / 2 + cardWidth / 2 + (isMobile ? 14 : 38);
+  const verticalUnit = isMobile ? 110 : 150;
 
   const { scrollYProgress } = useScroll({
     target: containerRef,
@@ -189,13 +196,23 @@ export default function CinematicScene() {
     return t.streamLines.slice(0, i);
   }, [progress, t.streamLines]);
 
-  const showPreHook  = within(progress, W.preHookFlash, W.preHookFlash + 0.06);
-  const showPostHook = within(progress, W.postHook, W.postHook + 0.06);
-  const showToolCall = progress > W.toolCallShow && progress < W.assistantStart;
+  // Level gating
+  const allowToolCall = level >= 2;
+  const allowHooks = level >= 3;
+
+  const visibleCards = CARDS.filter((c) => {
+    if (level === 1) return c.id === "system" || c.id === "claude" || c.id === "env";
+    if (level === 2) return c.id !== "skill" || true; // all 6 visible at L2
+    return true; // L3 all
+  });
+
+  const showPreHook  = allowHooks && within(progress, W.preHookFlash, W.preHookFlash + 0.06);
+  const showPostHook = allowHooks && within(progress, W.postHook, W.postHook + 0.06);
+  const showToolCall = allowToolCall && progress > W.toolCallShow && progress < W.assistantStart;
   const ctxConverging = progress > W.ctxConverge && progress < W.thinking1End + 0.02;
   const thinking =
-    (progress > W.thinking1End && progress < W.toolCallShow) ||
-    (progress > W.resultBack && progress < W.assistantStart);
+    (progress > W.thinking1End && progress < (allowToolCall ? W.toolCallShow : W.assistantStart)) ||
+    (allowToolCall && progress > W.resultBack && progress < W.assistantStart);
 
   return (
     <section
@@ -212,23 +229,37 @@ export default function CinematicScene() {
         <ParallaxOrb x={drift3} color="#f472b6" top="38%" left="42%" size={380} blur={55} opacity={0.4} />
         <FloatingTokens />
 
-        {/* Top headline */}
-        <div className="absolute top-0 inset-x-0 z-30 px-6 pt-16 text-center pointer-events-none">
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full glass mono text-[11px] text-white/70"
-          >
+        {/* Top headline — fades out as scroll progresses so it never covers the stage */}
+        <motion.div
+          className="absolute top-0 inset-x-0 z-40 px-6 pt-10 md:pt-14 text-center pointer-events-none"
+          style={{ opacity: Math.max(0, 1 - progress * 14) }}
+        >
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full glass mono text-[11px] text-white/70">
             <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
             {t.cinemaBadge}
-          </motion.div>
-          <h1 className="mt-5 text-3xl md:text-5xl font-semibold tracking-tight leading-[1.05]">
+          </div>
+          <h1 className="mt-4 text-2xl md:text-4xl font-semibold tracking-tight leading-[1.05]">
             {t.cinemaTitle1} <span className="gradient-text">{t.cinemaTitle2}</span>
-            <br />
-            <span className="text-white/60 text-xl md:text-2xl font-normal">
-              {t.cinemaSubtitle}
-            </span>
           </h1>
+        </motion.div>
+
+        {/* Tiny header that appears AFTER the headline fades — non-overlapping */}
+        <motion.div
+          className="absolute top-4 inset-x-0 z-40 flex justify-center pointer-events-none"
+          style={{ opacity: Math.max(0, Math.min(1, (progress - 0.06) * 14)) }}
+        >
+          <div className="glass rounded-full px-3 py-1 mono text-[10px] text-white/55">
+            {t.cinemaTitle1} {t.cinemaTitle2}
+          </div>
+        </motion.div>
+
+        {/* Level selector — top-center, always visible */}
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 z-50 pointer-events-auto"
+             style={{ marginTop: progress < 0.06 ? 130 : 36, transition: "margin 0.5s ease" }}>
+          <LevelSelector level={level} setLevel={setLevel} reset={() => {
+            const el = containerRef.current; if (!el) return;
+            window.scrollTo({ top: window.scrollY + el.getBoundingClientRect().top, behavior: "smooth" });
+          }} />
         </div>
 
         {/* 3D camera-tilted stage */}
@@ -249,7 +280,7 @@ export default function CinematicScene() {
             }}
           >
             {/* Floating context cards */}
-            {CARDS.map((card) => (
+            {visibleCards.map((card) => (
               <Card3D
                 key={card.id}
                 card={card}
@@ -261,6 +292,14 @@ export default function CinematicScene() {
                 isMobile={isMobile}
               />
             ))}
+            {/* Injection arrows from cards to chat */}
+            {!isMobile && <InjectionArrows
+              cards={visibleCards}
+              progress={progress}
+              converging={ctxConverging}
+              lateralUnit={lateralUnit}
+              verticalUnit={verticalUnit}
+            />}
 
             {/* Convergence beam */}
             <AnimatePresence>
@@ -271,6 +310,7 @@ export default function CinematicScene() {
             <motion.div
               className="relative z-30 mx-auto glass rounded-2xl overflow-hidden"
               style={{
+                width: chatWidth,
                 transformStyle: "preserve-3d",
                 boxShadow:
                   "0 80px 160px -30px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.06) inset, 0 0 60px rgba(167,139,250,0.08)",
@@ -479,6 +519,18 @@ export default function CinematicScene() {
 
 /* ────────────── components ────────────── */
 
+function cardSlotPosition(
+  card: CtxCard,
+  lateralUnit: number,
+  verticalUnit: number,
+) {
+  const sign = card.side === "left" ? -1 : 1;
+  const x = sign * lateralUnit;
+  // slot 0 → top, 1 → middle, 2 → bottom
+  const y = (card.slot - 1) * verticalUnit;
+  return { x, y, sign };
+}
+
 function Card3D({
   card,
   progress,
@@ -499,22 +551,18 @@ function Card3D({
   const { t } = useLang();
   const data = t.ctx[card.id];
 
-  // Position along entry → settle → converge
   const entryT = (progress - card.enter) / (card.settle - card.enter);
   const ease = Math.min(1, Math.max(0, entryT));
 
-  const sign = card.side === "left" ? -1 : 1;
-  const xBase = sign * lateralUnit;
-  const xOffset = sign * card.depth * (isMobile ? 14 : 36);
-  const yOffset = card.yFactor * verticalUnit;
-  const z = -120 - card.depth * 80;
-  const rotY = sign * (isMobile ? 14 : 22);
+  const { x: xFinal, y: yFinal, sign } = cardSlotPosition(card, lateralUnit, verticalUnit);
+  const z = -40 - card.slot * 20;
+  const rotY = sign * (isMobile ? 12 : 16);
 
   // animated values
   let opacity = 0;
-  let x = card.side === "left" ? xBase * 1.6 : xBase * 1.6;
-  let y = yOffset + 80;
-  let zVal = z - 200;
+  let x = sign * (lateralUnit + 220);
+  let y = yFinal + 50;
+  let zVal = z - 240;
   let rY = rotY * 1.6;
   let scale = 0.85;
   let blur = 0;
@@ -523,27 +571,25 @@ function Card3D({
     opacity = 0;
   } else if (progress < card.settle) {
     opacity = ease;
-    x = (card.side === "left" ? xBase * 1.6 : xBase * 1.6) * (1 - ease) + (xBase + xOffset) * ease;
-    y = (yOffset + 80) * (1 - ease) + yOffset * ease;
-    zVal = (z - 200) * (1 - ease) + z * ease;
+    x = (sign * (lateralUnit + 220)) * (1 - ease) + xFinal * ease;
+    y = (yFinal + 50) * (1 - ease) + yFinal * ease;
+    zVal = (z - 240) * (1 - ease) + z * ease;
     rY = rotY * 1.6 * (1 - ease) + rotY * ease;
     scale = 0.85 + 0.15 * ease;
   } else if (progress < card.converge) {
-    // gentle drift while settled
-    const drift = Math.sin((progress - card.settle) * 30) * 6;
+    const drift = Math.sin((progress - card.settle) * 24) * 5;
     opacity = 1;
-    x = xBase + xOffset;
-    y = yOffset + drift;
+    x = xFinal;
+    y = yFinal + drift;
     zVal = z;
     rY = rotY;
     scale = 1;
   } else {
-    // converging
     const cT = Math.min(1, (progress - card.converge) / 0.06);
     opacity = 1 - cT;
-    x = (xBase + xOffset) * (1 - cT);
-    y = yOffset * (1 - cT);
-    zVal = z * (1 - cT) + 0 * cT;
+    x = xFinal * (1 - cT);
+    y = yFinal * (1 - cT);
+    zVal = z * (1 - cT);
     rY = rotY * (1 - cT);
     scale = 1 - 0.4 * cT;
     blur = cT * 6;
@@ -557,7 +603,7 @@ function Card3D({
         marginLeft: -cardWidth / 2,
         marginTop: -80,
         transformStyle: "preserve-3d",
-        zIndex: 10 - card.depth,
+        zIndex: 10 - card.slot,
       }}
       animate={{ opacity, x, y, z: zVal, rotateY: rY, scale, filter: blur ? `blur(${blur}px)` : "blur(0px)" }}
       transition={{ duration: 0.15, ease: "linear" }}
@@ -565,29 +611,173 @@ function Card3D({
       <div
         className="rounded-xl glass overflow-hidden"
         style={{
-          boxShadow: `0 30px 60px -10px ${colorOf(card.id)}33, 0 0 0 1px ${colorOf(card.id)}33 inset`,
+          boxShadow: `0 30px 60px -10px ${card.ruleColor}55, 0 0 0 1px ${card.ruleColor}55 inset`,
         }}
       >
+        {/* Big rule kind badge */}
         <div
-          className="px-3 py-1.5 mono text-[10px] uppercase tracking-wide flex items-center justify-between border-b"
+          className="px-3 py-2 mono text-[10px] uppercase tracking-[0.14em] flex items-center justify-between border-b"
           style={{
-            borderColor: `${colorOf(card.id)}33`,
-            background: `${colorOf(card.id)}14`,
-            color: colorOf(card.id),
+            borderColor: `${card.ruleColor}44`,
+            background: `${card.ruleColor}1a`,
+            color: card.ruleColor,
           }}
         >
-          <span className="flex items-center gap-1.5">
-            <FileText size={10} /> {data.label}
-          </span>
+          <span className="font-semibold">{card.ruleKind}</span>
+          <span className="opacity-70">{t.injectsInto} →</span>
         </div>
-        <pre className="px-3 py-2 mono text-[11px] text-white/75 whitespace-pre-wrap leading-relaxed">
+        <div
+          className="px-3 py-2 flex items-center gap-2 border-b"
+          style={{ borderColor: "rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.02)" }}
+        >
+          <FileText size={12} style={{ color: card.ruleColor }} />
+          <span className="text-[13px] font-semibold text-white">{data.label}</span>
+        </div>
+        <pre className="px-3 py-2 mono text-[11px] text-white/80 whitespace-pre-wrap leading-relaxed">
           {data.body}
         </pre>
-        <div className="px-3 py-1 mono text-[9px] text-white/35 border-t border-white/5">
+        <div className="px-3 py-1.5 mono text-[10px] text-white/45 border-t border-white/5">
           {data.source}
         </div>
       </div>
     </motion.div>
+  );
+}
+
+function LevelSelector({
+  level,
+  setLevel,
+  reset,
+}: {
+  level: LevelId;
+  setLevel: (l: LevelId) => void;
+  reset: () => void;
+}) {
+  const { t } = useLang();
+  return (
+    <div className="glass rounded-full p-1 flex items-center gap-1">
+      <span className="mono text-[10px] uppercase tracking-wider text-white/45 px-2.5">
+        {t.levelLabel}
+      </span>
+      {t.levels.map((lv) => {
+        const active = level === lv.id;
+        return (
+          <button
+            key={lv.id}
+            onClick={() => {
+              setLevel(lv.id);
+              reset();
+            }}
+            className="relative px-3 py-1.5 rounded-full transition mono text-[11px]"
+            style={{
+              background: active ? "rgba(255,255,255,0.14)" : "transparent",
+              color: active ? "#fff" : "rgba(255,255,255,0.55)",
+            }}
+          >
+            <span className="font-semibold mr-1">{lv.id}</span>
+            {lv.name}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function InjectionArrows({
+  cards,
+  progress,
+  converging,
+  lateralUnit,
+  verticalUnit,
+}: {
+  cards: CtxCard[];
+  progress: number;
+  converging: boolean;
+  lateralUnit: number;
+  verticalUnit: number;
+}) {
+  // SVG canvas centered over stage; arrows go from each settled card → chat panel
+  const W = 1300;
+  const H = 600;
+  const cx = W / 2;
+  const cy = H / 2;
+  return (
+    <svg
+      className="pointer-events-none absolute left-1/2 top-1/2 z-20"
+      style={{
+        width: W,
+        height: H,
+        marginLeft: -W / 2,
+        marginTop: -H / 2,
+        transform: "translateZ(0)",
+      }}
+      viewBox={`0 0 ${W} ${H}`}
+    >
+      <defs>
+        {cards.map((c) => (
+          <marker
+            key={c.id}
+            id={`arrow-${c.id}`}
+            viewBox="0 0 10 10"
+            refX="8"
+            refY="5"
+            markerWidth="6"
+            markerHeight="6"
+            orient="auto-start-reverse"
+          >
+            <path d="M 0 0 L 10 5 L 0 10 z" fill={c.ruleColor} />
+          </marker>
+        ))}
+      </defs>
+      {cards.map((c) => {
+        const visible = progress > c.settle && progress < c.converge;
+        if (!visible && !converging) return null;
+        const { x, y, sign } = cardSlotPosition(c, lateralUnit, verticalUnit);
+        // Card edge facing center
+        const cardEdgeX = cx + x - sign * 110;
+        const cardY = cy + y;
+        // Chat panel edge (closest x)
+        const chatEdgeX = cx + sign * 280 * -1; // toward chat panel side
+        const chatY = cy + (c.slot - 1) * 24;
+        // Quadratic curve control point
+        const ctrlX = (cardEdgeX + chatEdgeX) / 2;
+        const ctrlY = (cardY + chatY) / 2 + sign * -8;
+        const path = `M ${cardEdgeX} ${cardY} Q ${ctrlX} ${ctrlY}, ${chatEdgeX} ${chatY}`;
+        const op = converging ? Math.max(0, 1 - (progress - c.converge) * 30) : 1;
+        return (
+          <g key={c.id} opacity={op}>
+            <motion.path
+              d={path}
+              fill="none"
+              stroke={c.ruleColor}
+              strokeWidth={2}
+              strokeDasharray="6 6"
+              strokeOpacity="0.85"
+              markerEnd={`url(#arrow-${c.id})`}
+              initial={{ pathLength: 0 }}
+              animate={{ pathLength: 1 }}
+              transition={{ duration: 0.6, ease: "easeOut" }}
+            />
+            <motion.circle
+              r={3}
+              fill={c.ruleColor}
+              animate={{
+                offsetDistance: ["0%", "100%"],
+              }}
+              transition={{
+                duration: 1.4,
+                repeat: Infinity,
+                ease: "linear",
+              }}
+              style={{
+                offsetPath: `path("${path}")`,
+                filter: `drop-shadow(0 0 4px ${c.ruleColor})`,
+              }}
+            />
+          </g>
+        );
+      })}
+    </svg>
   );
 }
 
