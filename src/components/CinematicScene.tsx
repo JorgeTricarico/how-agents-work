@@ -205,7 +205,10 @@ export default function CinematicScene() {
   // Chat panel is narrowed so cards land OUTSIDE its silhouette
   const chatWidth = isMobile ? Math.min(360, vw * 0.86) : 560;
   const lateralUnit = chatWidth / 2 + cardWidth / 2 + (isMobile ? 14 : 38);
-  const verticalUnit = isMobile ? 110 : 150;
+  // Cards now cluster vertically around the orb (which sits between input
+  // and output panels) instead of spreading across the whole chat height.
+  const verticalUnit = isMobile ? 70 : 80;
+  const orbGap = isMobile ? 90 : 120; // space between input and output panels (orb lives here)
 
   const { scrollYProgress } = useScroll({
     target: containerRef,
@@ -428,15 +431,14 @@ export default function CinematicScene() {
               scale: camScale,
             }}
           >
-            {/* Convergence orb — visible point where rules merge into the prompt
-                that the model receives. Lives just below the chat panel. */}
+            {/* Convergence orb in the gap between input & output panels */}
             <ConvergenceOrb
               progress={progress}
               cards={visibleCards}
-              chatHeight={isMobile ? 480 : 520}
+              orbGap={orbGap}
             />
 
-            {/* Floating context cards */}
+            {/* Floating context cards — clustered around the orb's vertical zone */}
             {visibleCards.map((card) => (
               <Card3D
                 key={card.key}
@@ -456,7 +458,7 @@ export default function CinematicScene() {
               converging={ctxConverging}
               lateralUnit={lateralUnit}
               verticalUnit={verticalUnit}
-              chatHeight={isMobile ? 480 : 520}
+              orbGap={orbGap}
             />}
 
             {/* Convergence beam + merge burst */}
@@ -469,185 +471,218 @@ export default function CinematicScene() {
               )}
             </AnimatePresence>
 
-            {/* Chat panel — center stage */}
-            <motion.div
-              className="relative z-30 mx-auto glass rounded-2xl overflow-hidden"
-              style={{
-                width: chatWidth,
-                transformStyle: "preserve-3d",
-              }}
-              initial={{ opacity: 0, y: 60 }}
-              animate={{
-                opacity: 1,
-                y: 0,
-                boxShadow: ctxConverging
-                  ? [
-                      "0 80px 160px -30px rgba(0,0,0,0.8), 0 0 0 1px rgba(167,139,250,0.5) inset, 0 0 80px rgba(167,139,250,0.45)",
-                      "0 80px 160px -30px rgba(0,0,0,0.8), 0 0 0 2px rgba(34,211,238,0.6) inset, 0 0 120px rgba(34,211,238,0.55)",
-                      "0 80px 160px -30px rgba(0,0,0,0.8), 0 0 0 1px rgba(244,114,182,0.5) inset, 0 0 80px rgba(244,114,182,0.45)",
-                    ]
-                  : "0 80px 160px -30px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.06) inset, 0 0 60px rgba(167,139,250,0.08)",
-              }}
-              transition={
-                ctxConverging
-                  ? { duration: 1.6, repeat: Infinity, ease: "easeInOut" }
-                  : { duration: 1, ease: [0.22, 1, 0.36, 1] }
-              }
+            {/* Stack: TitleBar → InputPanel → ORB GAP → OutputPanel.
+                The orb lives in the gap, in CLEAR space, so its
+                connections (arrows in / beam out) are fully visible. */}
+            <div
+              className="relative z-30 mx-auto flex flex-col items-stretch"
+              style={{ width: chatWidth }}
             >
-              {/* Title bar */}
-              <div className="flex items-center justify-between px-4 py-2.5 border-b border-white/5 bg-black/40">
-                <div className="flex items-center gap-2">
-                  <div className="flex gap-1.5">
-                    <span className="h-3 w-3 rounded-full bg-red-500/80" />
-                    <span className="h-3 w-3 rounded-full bg-yellow-500/80" />
-                    <span className="h-3 w-3 rounded-full bg-green-500/80" />
-                  </div>
-                  <span className="ml-3 mono text-[11px] text-white/45">
-                    agent · claude-opus-4-7 · 1M context
-                  </span>
-                </div>
-                <div className="mono text-[10px] text-white/40 flex items-center gap-2">
-                  <motion.span
-                    animate={{ opacity: thinking ? [0.4, 1, 0.4] : 1 }}
-                    transition={{ duration: 1.2, repeat: Infinity }}
-                    className="h-1.5 w-1.5 rounded-full"
-                    style={{ background: thinking ? "#fbbf24" : "#10b981" }}
-                  />
-                  {thinking ? t.thinking : t.ready}
-                  <span className="text-white/25">·</span>
-                  <span>{t.iter} 1</span>
-                </div>
+              {/* Status pill — small, floating above input */}
+              <div className="self-center mb-2 glass rounded-full px-3 py-1 flex items-center gap-2 mono text-[10px] text-white/55">
+                <motion.span
+                  animate={{ opacity: thinking ? [0.4, 1, 0.4] : 1 }}
+                  transition={{ duration: 1.2, repeat: Infinity }}
+                  className="h-1.5 w-1.5 rounded-full"
+                  style={{ background: thinking ? "#fbbf24" : "#10b981" }}
+                />
+                <span className="text-white/75">{thinking ? t.thinking : t.ready}</span>
+                <span className="text-white/25">·</span>
+                <span>{agent.modelLabel}</span>
               </div>
 
-              {/* Body */}
-              <div
-                className="p-6 md:p-8 flex flex-col gap-5 bg-[radial-gradient(ellipse_at_top,#0c0c14,#07070a)]"
-                style={{ minHeight: 480 }}
+              {/* INPUT PANEL — user message only */}
+              <motion.div
+                className="rounded-2xl overflow-hidden"
+                style={{
+                  background: "rgba(15,15,22,0.65)",
+                  backdropFilter: "blur(12px)",
+                  border: "1px solid rgba(255,255,255,0.06)",
+                  boxShadow: "0 30px 60px -20px rgba(0,0,0,0.6)",
+                }}
+                initial={{ opacity: 0, y: 30 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.7 }}
               >
-                {progress < W.bootEnd && (
-                  <div className="flex-1 flex items-center justify-center mono text-xs text-white/40">
-                    <span className="animate-pulse">{t.initBoot}</span>
-                  </div>
-                )}
+                <div className="px-4 py-2 border-b border-white/5 mono text-[10px] uppercase tracking-wider text-white/45 flex items-center justify-between">
+                  <span>input · turno user</span>
+                  <span className="text-white/30">→ va al modelo</span>
+                </div>
+                <div className="px-5 py-4 min-h-[64px] flex items-start gap-3">
+                  {progress < W.bootEnd ? (
+                    <span className="mono text-xs text-white/40 animate-pulse">
+                      {t.initBoot}
+                    </span>
+                  ) : progress > W.userTypeStart ? (
+                    <>
+                      <Bubble color="#60a5fa" icon={<UserIcon size={14} />} />
+                      <div className="flex-1">
+                        <div className="mono text-[10px] uppercase tracking-wide text-white/40 mb-1">
+                          {t.user}
+                        </div>
+                        <div className="text-[15px] text-white/90">
+                          {userText}
+                          {progress < W.userTypeEnd && <Caret />}
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <span className="mono text-[11px] text-white/30">
+                      esperando input…
+                    </span>
+                  )}
+                </div>
+              </motion.div>
 
-                {progress > W.userTypeStart && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="flex gap-3 items-start"
-                  >
-                    <Bubble color="#60a5fa" icon={<UserIcon size={14} />} />
-                    <div className="flex-1">
-                      <div className="mono text-[10px] uppercase tracking-wide text-white/40 mb-1">
-                        {t.user}
-                      </div>
-                      <div className="text-[15px] text-white/90">
-                        {userText}
-                        {progress < W.userTypeEnd && <Caret />}
-                      </div>
+              {/* ORB GAP — clear space where the convergence orb lives.
+                  Cards float around it, arrows funnel in, beam shoots
+                  down to the OutputPanel below. */}
+              <div style={{ height: orbGap }} />
+
+              {/* OUTPUT PANEL — tool_use, diff, hooks, assistant message.
+                  The crystallize beam from the orb terminates at the top
+                  edge of this panel (its containing block), giving the
+                  beam a specific endpoint. */}
+              <motion.div
+                className="rounded-2xl overflow-hidden relative"
+                style={{
+                  background: "rgba(15,15,22,0.7)",
+                  backdropFilter: "blur(12px)",
+                  border: "1px solid rgba(255,255,255,0.06)",
+                  boxShadow: "0 40px 80px -25px rgba(0,0,0,0.7)",
+                  minHeight: 220,
+                }}
+                initial={{ opacity: 0, y: 30 }}
+                animate={{
+                  opacity: 1,
+                  y: 0,
+                  boxShadow: ctxConverging
+                    ? [
+                        "0 40px 80px -25px rgba(0,0,0,0.7), 0 0 0 1px rgba(167,139,250,0.5) inset",
+                        "0 40px 80px -25px rgba(0,0,0,0.7), 0 0 0 2px rgba(34,211,238,0.6) inset",
+                        "0 40px 80px -25px rgba(0,0,0,0.7), 0 0 0 1px rgba(244,114,182,0.5) inset",
+                      ]
+                    : "0 40px 80px -25px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.06) inset",
+                }}
+                transition={
+                  ctxConverging
+                    ? { duration: 1.6, repeat: Infinity, ease: "easeInOut" }
+                    : { duration: 0.9, delay: 0.15 }
+                }
+              >
+                <div className="px-4 py-2 border-b border-white/5 mono text-[10px] uppercase tracking-wider text-white/45 flex items-center justify-between">
+                  <span>output · respuesta del agente</span>
+                  <span className="text-white/30">← del modelo</span>
+                </div>
+                <div className="px-5 py-4 flex flex-col gap-4">
+                  {!showToolCall && progress < W.assistantStart && (
+                    <div className="mono text-[11px] text-white/30 py-3">
+                      {progress < W.toolCallShow
+                        ? "esperando que el modelo responda…"
+                        : ""}
                     </div>
-                  </motion.div>
-                )}
+                  )}
 
-                <AnimatePresence>
-                  {showToolCall && (
+                  <AnimatePresence>
+                    {showToolCall && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 14 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -8 }}
+                        className="flex gap-3 items-start"
+                      >
+                        <Bubble color="#a78bfa" icon={<Sparkles size={14} />} />
+                        <div className="flex-1 space-y-2 min-w-0">
+                          <div className="mono text-[10px] uppercase tracking-wide text-white/40">
+                            {t.toolUse}
+                          </div>
+                          <div className="rounded-lg border border-violet-400/30 bg-violet-500/5 mono text-[12px] overflow-hidden">
+                            <div className="px-3 py-1.5 border-b border-violet-400/20 flex items-center justify-between text-violet-300 text-[10px] uppercase tracking-wide">
+                              <span className="flex items-center gap-1.5">
+                                <Wrench size={11} /> Edit
+                              </span>
+                              <span className="text-white/40">id: tu_01k7…</span>
+                            </div>
+                            <pre className="px-3 py-2 text-white/80 leading-relaxed whitespace-pre-wrap">{`{
+  "path": "CHANGELOG.md",
+  "old_string": "## [2.3.1] - 2026-04-12",
+  "new_string": "## [2.4.0] - …"
+}`}</pre>
+                          </div>
+
+                          <AnimatePresence>
+                            {showPreHook && (
+                              <motion.div
+                                initial={{ opacity: 0, y: -6 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0 }}
+                                className="rounded-lg border border-amber-400/40 bg-amber-500/10 px-3 py-2 flex items-center justify-between"
+                              >
+                                <div className="flex items-center gap-2 text-amber-300 mono text-[12px]">
+                                  <Shield size={13} />
+                                  <span>{t.preHook} · {t.preHookCheck}</span>
+                                </div>
+                                <motion.span
+                                  initial={{ opacity: 0 }}
+                                  animate={{ opacity: 1 }}
+                                  transition={{ delay: 0.4 }}
+                                  className="mono text-[11px] text-emerald-300 flex items-center gap-1"
+                                >
+                                  <CheckCircle2 size={12} /> {t.allow}
+                                </motion.span>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+
+                          {streamLines.length > 0 && (
+                            <DiffView
+                              file="CHANGELOG.md"
+                              plus={6}
+                              minus={0}
+                              visibleLines={streamLines.length}
+                            />
+                          )}
+
+                          <AnimatePresence>
+                            {showPostHook && (
+                              <motion.div
+                                initial={{ opacity: 0, y: -6 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0 }}
+                                className="flex flex-wrap items-center gap-2 text-[11px] mono"
+                              >
+                                <Badge color="emerald">{t.postPrettier}</Badge>
+                                <Badge color="emerald">{t.postTsc}</Badge>
+                                <Badge color="pink">{t.postAudit}</Badge>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  {progress > W.assistantStart && (
                     <motion.div
-                      initial={{ opacity: 0, y: 14, rotateX: -6 }}
-                      animate={{ opacity: 1, y: 0, rotateX: 0 }}
-                      exit={{ opacity: 0, y: -8 }}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
                       className="flex gap-3 items-start"
                     >
                       <Bubble color="#a78bfa" icon={<Sparkles size={14} />} />
-                      <div className="flex-1 space-y-2">
-                        <div className="mono text-[10px] uppercase tracking-wide text-white/40">
-                          {t.toolUse}
+                      <div className="flex-1">
+                        <div className="mono text-[10px] uppercase tracking-wide text-white/40 mb-1">
+                          {t.assistant}
                         </div>
-                        <div className="rounded-lg border border-violet-400/30 bg-violet-500/5 mono text-[12px] overflow-hidden">
-                          <div className="px-3 py-1.5 border-b border-violet-400/20 flex items-center justify-between text-violet-300 text-[10px] uppercase tracking-wide">
-                            <span className="flex items-center gap-1.5">
-                              <Wrench size={11} /> Edit
-                            </span>
-                            <span className="text-white/40">id: tu_01k7…</span>
-                          </div>
-                          <pre className="px-3 py-2 text-white/80 leading-relaxed whitespace-pre-wrap">{`{
-  "path": "CHANGELOG.md",
-  "old_string": "## [2.3.1] - 2026-04-12",
-  "new_string": "## [2.4.0] - …\\n …\\n\\n## [2.3.1] - 2026-04-12"
-}`}</pre>
+                        <div className="text-[15px] text-white/90 whitespace-pre-line leading-relaxed">
+                          {assistText}
+                          {progress < W.assistantEnd && <Caret />}
                         </div>
-
-                        <AnimatePresence>
-                          {showPreHook && (
-                            <motion.div
-                              initial={{ opacity: 0, y: -6 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              exit={{ opacity: 0 }}
-                              className="rounded-lg border border-amber-400/40 bg-amber-500/10 px-3 py-2 flex items-center justify-between"
-                            >
-                              <div className="flex items-center gap-2 text-amber-300 mono text-[12px]">
-                                <Shield size={13} />
-                                <span>{t.preHook} · {t.preHookCheck}</span>
-                              </div>
-                              <motion.span
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                transition={{ delay: 0.4 }}
-                                className="mono text-[11px] text-emerald-300 flex items-center gap-1"
-                              >
-                                <CheckCircle2 size={12} /> {t.allow}
-                              </motion.span>
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-
-                        {streamLines.length > 0 && (
-                          <DiffView
-                            file="CHANGELOG.md"
-                            plus={6}
-                            minus={0}
-                            visibleLines={streamLines.length}
-                          />
-                        )}
-
-                        <AnimatePresence>
-                          {showPostHook && (
-                            <motion.div
-                              initial={{ opacity: 0, y: -6 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              exit={{ opacity: 0 }}
-                              className="flex flex-wrap items-center gap-2 text-[11px] mono"
-                            >
-                              <Badge color="emerald">{t.postPrettier}</Badge>
-                              <Badge color="emerald">{t.postTsc}</Badge>
-                              <Badge color="pink">{t.postAudit}</Badge>
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
                       </div>
                     </motion.div>
                   )}
-                </AnimatePresence>
-
-                {progress > W.assistantStart && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="flex gap-3 items-start"
-                  >
-                    <Bubble color="#a78bfa" icon={<Sparkles size={14} />} />
-                    <div className="flex-1">
-                      <div className="mono text-[10px] uppercase tracking-wide text-white/40 mb-1">
-                        {t.assistant}
-                      </div>
-                      <div className="text-[15px] text-white/90 whitespace-pre-line leading-relaxed">
-                        {assistText}
-                        {progress < W.assistantEnd && <Caret />}
-                      </div>
-                    </div>
-                  </motion.div>
-                )}
-              </div>
-            </motion.div>
+                </div>
+              </motion.div>
+            </div>
           </motion.div>
         </motion.div>
 
@@ -1048,11 +1083,11 @@ function StagePanel({
 function ConvergenceOrb({
   progress,
   cards,
-  chatHeight,
+  orbGap,
 }: {
   progress: number;
   cards: CtxCard[];
-  chatHeight: number;
+  orbGap: number;
 }) {
   // Orb fills with energy as cards settle; pulses extra during the
   // converge moment; shoots a vertical beam into the chat once
@@ -1077,15 +1112,14 @@ function ConvergenceOrb({
   const size =
     baseSize + buildup * 30 + (isConverging ? 20 : 0) + (isInference ? 10 : 0);
 
-  // Position orb slightly below the chat panel bottom edge but above the
-  // stage panel banner (which sits at bottom-3, ~120px tall).
-  const verticalOffset = chatHeight / 2 - 20;
+  // Orb sits at the vertical center of the stage (which is exactly where
+  // the gap between InputPanel and OutputPanel lives). orbGap is the
+  // height of that gap; we render at exactly center.
   return (
     <div
       className="absolute left-1/2 top-1/2 z-45 pointer-events-none"
       style={{
-        marginTop: verticalOffset,
-        transform: "translateX(-50%)",
+        transform: "translate(-50%, -50%)",
       }}
     >
       {/* Outer glow halo */}
@@ -1163,27 +1197,48 @@ function ConvergenceOrb({
         prompt al modelo
       </motion.div>
 
-      {/* Crystallize beam — orb feeds upward into the chat panel during
-          inference and during answer streaming */}
+      {/* Crystallize beam — orb shoots DOWN to the OutputPanel top edge.
+          Specific endpoint = a subtle landing flare so it's clear where
+          the beam terminates. */}
       <AnimatePresence>
         {(isInference || isAnswerStream) && (
-          <motion.div
-            initial={{ opacity: 0, scaleY: 0 }}
-            animate={{ opacity: 1, scaleY: 1 }}
-            exit={{ opacity: 0 }}
-            className="absolute"
-            style={{
-              left: -2,
-              bottom: 0,
-              height: chatHeight,
-              width: 4,
-              background:
-                "linear-gradient(to top, rgba(255,255,255,0.85), rgba(167,139,250,0.55) 30%, rgba(34,211,238,0.35) 60%, transparent)",
-              transformOrigin: "bottom",
-              filter: "blur(0.5px)",
-            }}
-            transition={{ duration: 0.6, ease: "easeOut" }}
-          />
+          <>
+            <motion.div
+              initial={{ opacity: 0, scaleY: 0 }}
+              animate={{ opacity: 1, scaleY: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute"
+              style={{
+                left: -3,
+                top: 0,
+                height: orbGap / 2,
+                width: 6,
+                background:
+                  "linear-gradient(to bottom, rgba(255,255,255,0.95), rgba(167,139,250,0.7) 30%, rgba(34,211,238,0.45) 60%, rgba(34,211,238,0))",
+                transformOrigin: "top",
+                filter: "blur(0.4px)",
+                borderRadius: 3,
+              }}
+              transition={{ duration: 0.6, ease: "easeOut" }}
+            />
+            {/* Landing flare at the OutputPanel top edge */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.4 }}
+              animate={{ opacity: [0, 1, 0.85], scale: [0.4, 1.3, 1] }}
+              exit={{ opacity: 0 }}
+              className="absolute rounded-full"
+              style={{
+                left: -16,
+                top: orbGap / 2 - 16,
+                width: 32,
+                height: 32,
+                background:
+                  "radial-gradient(circle, rgba(255,255,255,0.95), rgba(167,139,250,0.5) 40%, transparent 70%)",
+                filter: "blur(2px)",
+              }}
+              transition={{ duration: 0.8, ease: "easeOut" }}
+            />
+          </>
         )}
       </AnimatePresence>
 
@@ -1216,23 +1271,23 @@ function InjectionArrows({
   converging,
   lateralUnit,
   verticalUnit,
-  chatHeight,
+  orbGap,
 }: {
   cards: CtxCard[];
   progress: number;
   converging: boolean;
   lateralUnit: number;
   verticalUnit: number;
-  chatHeight: number;
+  orbGap: number;
 }) {
-  // SVG canvas centered over stage. Arrows now converge into a single point
-  // (the convergence orb) just below the chat panel.
+  // SVG canvas centered over stage. Arrows converge into the orb,
+  // which sits at the stage vertical center.
   const W = 1300;
   const H = 800;
   const cx = W / 2;
   const cy = H / 2;
   const orbX = cx;
-  const orbY = cy + chatHeight / 2 - 20;
+  const orbY = cy;
   return (
     <svg
       className="pointer-events-none absolute left-1/2 top-1/2 z-20"
