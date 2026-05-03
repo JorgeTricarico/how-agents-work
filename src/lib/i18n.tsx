@@ -115,15 +115,15 @@ const ES: Dict = {
   postPrettier: "prettier · limpio",
   postTsc: "tsc · 0 errores",
   postAudit: "auditoría · registrado",
-  userMsg: "Agregá un toggle de modo oscuro al header.",
+  userMsg: "Agregá una entrada al CHANGELOG.md para la versión v2.4.0.",
   streamLines: [
-    "Leyendo src/components/Header.tsx…",
-    "Encontré el ThemeProvider existente.",
-    "Insertando <ThemeToggle/> al lado del nav.",
-    "Aplicado +18 −2",
+    "Leyendo CHANGELOG.md…",
+    "Encontré la última entrada: v2.3.1.",
+    "Insertando sección v2.4.0 al inicio.",
+    "Aplicado +6 −0",
   ],
   assistMsg:
-    "Listo. El Header ahora importa ThemeToggle y lo renderiza al\nlado del nav. Las variantes `dark:` de Tailwind ya cubren el\nresto de la UI.",
+    "Listo. Agregué la entrada v2.4.0 con las secciones Added y\nFixed. La fecha es la de hoy y respeté el formato Keep a\nChangelog que ya usabas.",
   ctx: {
     system: {
       label: "system prompt",
@@ -299,15 +299,15 @@ const EN: Dict = {
   postPrettier: "prettier · clean",
   postTsc: "tsc · 0 errors",
   postAudit: "audit · logged",
-  userMsg: "Add a dark mode toggle to the header.",
+  userMsg: "Add a CHANGELOG.md entry for the v2.4.0 release.",
   streamLines: [
-    "Reading src/components/Header.tsx…",
-    "Found existing theme provider.",
-    "Inserting <ThemeToggle/> next to nav.",
-    "Patched +18 −2",
+    "Reading CHANGELOG.md…",
+    "Found latest entry: v2.3.1.",
+    "Inserting v2.4.0 section at the top.",
+    "Patched +6 −0",
   ],
   assistMsg:
-    "Done. The Header now imports ThemeToggle and renders it next\nto the nav. Tailwind's `dark:` variants already cover the rest\nof the UI.",
+    "Done. Added a v2.4.0 entry with Added and Fixed sections,\ndated today, matching the Keep a Changelog format you were\nalready using.",
   ctx: {
     system: {
       label: "system prompt",

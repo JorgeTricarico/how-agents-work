@@ -25,6 +25,13 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { useLang } from "@/lib/i18n";
+import {
+  AGENTS,
+  AGENT_ORDER,
+  AgentId,
+  CardData,
+  pickLang,
+} from "@/lib/agents";
 
 /* ──────────────────────────────────────────────────────────
    Scroll-driven cinematic.
@@ -34,25 +41,7 @@ import { useLang } from "@/lib/i18n";
    Camera also tilts subtly with progress for a 3D feel.
    ────────────────────────────────────────────────────────── */
 
-type CtxCard = {
-  id: "system" | "claude" | "skill" | "pathrule" | "tools" | "env";
-  side: "left" | "right";
-  slot: number; // vertical slot index
-  enter: number;
-  settle: number;
-  converge: number;
-  ruleKind: "ALWAYS" | "PATH-SCOPED" | "ON-DEMAND" | "RUNTIME";
-  ruleColor: string;
-};
-
-const CARDS: CtxCard[] = [
-  { id: "system",   side: "left",  slot: 0, enter: 0.16, settle: 0.24, converge: 0.36, ruleKind: "ALWAYS",      ruleColor: "#a78bfa" },
-  { id: "claude",   side: "right", slot: 0, enter: 0.18, settle: 0.26, converge: 0.36, ruleKind: "ALWAYS",      ruleColor: "#22d3ee" },
-  { id: "pathrule", side: "left",  slot: 1, enter: 0.20, settle: 0.28, converge: 0.36, ruleKind: "PATH-SCOPED", ruleColor: "#f472b6" },
-  { id: "skill",    side: "right", slot: 1, enter: 0.22, settle: 0.30, converge: 0.36, ruleKind: "ON-DEMAND",   ruleColor: "#fbbf24" },
-  { id: "tools",    side: "left",  slot: 2, enter: 0.24, settle: 0.32, converge: 0.36, ruleKind: "ALWAYS",      ruleColor: "#34d399" },
-  { id: "env",      side: "right", slot: 2, enter: 0.26, settle: 0.34, converge: 0.36, ruleKind: "RUNTIME",     ruleColor: "#60a5fa" },
-];
+type CtxCard = CardData;
 
 // Beat windows in scroll progress (0..1)
 const W = {
@@ -74,39 +63,118 @@ const W = {
   iterPulse:      0.95,
 };
 
-// Step anchors per level — points the scrubber jumps to with prev/next.
-// These align with the *most readable* moment of each beat.
-type StepAnchor = { id: string; at: number; label: { es: string; en: string } };
-const STEPS: Record<LevelId, StepAnchor[]> = {
-  1: [
-    { id: "boot",     at: 0.005, label: { es: "Inicio", en: "Boot" } },
-    { id: "user",     at: 0.10,  label: { es: "Usuario escribe", en: "User types" } },
-    { id: "ctx",      at: 0.30,  label: { es: "Contexto se inyecta", en: "Context injects" } },
-    { id: "merge",    at: 0.36,  label: { es: "Mezcla en el modelo", en: "Mix into model" } },
-    { id: "thinking", at: 0.45,  label: { es: "Pensando", en: "Thinking" } },
-    { id: "answer",   at: 0.80,  label: { es: "Respuesta", en: "Answer" } },
-  ],
-  2: [
-    { id: "boot",     at: 0.005, label: { es: "Inicio", en: "Boot" } },
-    { id: "user",     at: 0.10,  label: { es: "Usuario escribe", en: "User types" } },
-    { id: "ctx",      at: 0.30,  label: { es: "Contexto + path-rules + skill", en: "Context + path-rules + skill" } },
-    { id: "merge",    at: 0.36,  label: { es: "Mezcla en el modelo", en: "Mix into model" } },
-    { id: "tool",     at: 0.44,  label: { es: "El modelo llama Edit", en: "Model calls Edit" } },
-    { id: "exec",     at: 0.58,  label: { es: "Tool ejecuta", en: "Tool runs" } },
-    { id: "answer",   at: 0.82,  label: { es: "Respuesta", en: "Answer" } },
-  ],
-  3: [
-    { id: "boot",     at: 0.005, label: { es: "Inicio", en: "Boot" } },
-    { id: "user",     at: 0.10,  label: { es: "Usuario escribe", en: "User types" } },
-    { id: "ctx",      at: 0.30,  label: { es: "Contexto completo", en: "Full context" } },
-    { id: "merge",    at: 0.36,  label: { es: "Mezcla en el modelo", en: "Mix into model" } },
-    { id: "tool",     at: 0.44,  label: { es: "tool_use", en: "tool_use" } },
-    { id: "preHook",  at: 0.47,  label: { es: "PreToolUse hook", en: "PreToolUse hook" } },
-    { id: "exec",     at: 0.58,  label: { es: "Tool ejecuta", en: "Tool runs" } },
-    { id: "postHook", at: 0.69,  label: { es: "PostToolUse hook", en: "PostToolUse hook" } },
-    { id: "answer",   at: 0.82,  label: { es: "Respuesta", en: "Answer" } },
-  ],
+// Each stage is an explicit phase of the agent loop. Every stage has a
+// short conceptual description ("what's in this stage / what gets injected
+// here") that is shown alongside the cinematic so the user builds a mental
+// model, not just sees pretty animations.
+type Stage = {
+  id: string;
+  at: number;
+  label: { es: string; en: string };
+  description: { es: string; en: string };
 };
+
+const STAGES: Stage[] = [
+  {
+    id: "input",
+    at: 0.005,
+    label: { es: "1. Input", en: "1. Input" },
+    description: {
+      es: "El usuario escribe un mensaje. El harness lo captura y todavía no se lo pasa al modelo: primero arma el contexto.",
+      en: "The user types a message. The harness captures it but does not call the model yet — first it assembles the context.",
+    },
+  },
+  {
+    id: "user-typed",
+    at: 0.10,
+    label: { es: "2. Mensaje recibido", en: "2. Message received" },
+    description: {
+      es: "El mensaje queda como turno user pendiente. El harness arranca a leer todo lo que tiene que adjuntar.",
+      en: "The message becomes a pending user turn. The harness starts reading everything it must attach.",
+    },
+  },
+  {
+    id: "ctx-assembly",
+    at: 0.28,
+    label: { es: "3. Ensamblado de contexto", en: "3. Context assembly" },
+    description: {
+      es: "Se inyectan en este orden: system prompt (fijo del vendor), reglas siempre activas (AGENTS.md / CLAUDE.md), reglas por path que matcheen lo que se va a editar, skills invocados, esquemas de herramientas y env (cwd, git status).",
+      en: "Injected in this order: system prompt (vendor-fixed), always-on rules (AGENTS.md / CLAUDE.md), path rules whose globs match the files about to be edited, invoked skills, tool schemas, and env (cwd, git status).",
+    },
+  },
+  {
+    id: "ctx-merged",
+    at: 0.36,
+    label: { es: "4. Prompt final", en: "4. Final prompt" },
+    description: {
+      es: "Todo lo anterior se concatena en un solo payload de mensajes. Ese payload — y nada más — es lo que recibe la API del LLM.",
+      en: "Everything above is concatenated into a single messages payload. That payload — and nothing else — is what the LLM API receives.",
+    },
+  },
+  {
+    id: "inference",
+    at: 0.42,
+    label: { es: "5. Inferencia", en: "5. Inference" },
+    description: {
+      es: "El modelo decodifica tokens. Si decide que necesita una herramienta, emite un bloque structured tool_use en vez de texto libre.",
+      en: "The model decodes tokens. If it decides it needs a tool, it emits a structured tool_use block instead of free text.",
+    },
+  },
+  {
+    id: "tool-intent",
+    at: 0.46,
+    label: { es: "6. Intención de tool_use", en: "6. tool_use intent" },
+    description: {
+      es: "El modelo todavía no ejecuta nada — sólo dice 'quiero llamar Edit con estos argumentos'. El harness es quien ejecuta.",
+      en: "The model didn't run anything yet — it just said 'I want to call Edit with these args'. The harness is what executes.",
+    },
+  },
+  {
+    id: "pre-hook",
+    at: 0.50,
+    label: { es: "7. PreToolUse hook", en: "7. PreToolUse hook" },
+    description: {
+      es: "Antes de ejecutar, el harness corre tus hooks de PreToolUse. Reciben el JSON de la llamada por stdin y pueden permitir, mutar o denegar (exit 2). Acá es donde bloqueás cosas peligrosas como rm -rf o git push --force.",
+      en: "Before executing, the harness runs your PreToolUse hooks. They receive the call JSON on stdin and can allow, mutate, or deny (exit 2). This is where you block dangerous things like rm -rf or git push --force.",
+    },
+  },
+  {
+    id: "tool-exec",
+    at: 0.58,
+    label: { es: "8. Ejecución de la tool", en: "8. Tool execution" },
+    description: {
+      es: "El harness ejecuta la herramienta en sandbox: aplica el Edit, corre el comando, hace el fetch. Captura stdout, stderr y exit code. Los errores no son excepciones — vuelven como tool_result.",
+      en: "The harness runs the tool in a sandbox: applies the Edit, runs the command, makes the fetch. It captures stdout, stderr and exit code. Errors are not exceptions — they come back as tool_result.",
+    },
+  },
+  {
+    id: "post-hook",
+    at: 0.68,
+    label: { es: "9. PostToolUse hook", en: "9. PostToolUse hook" },
+    description: {
+      es: "Tras la ejecución corren tus hooks de PostToolUse: lint, format, typecheck, audit. Si fallan pueden devolver feedback al modelo, que lo ve como mensaje y reacciona — esta es la parte que hace que el agente 'aprenda' de sus propios errores.",
+      en: "After execution, your PostToolUse hooks run: lint, format, typecheck, audit. If they fail they can return feedback to the model, which sees it as a message and reacts — this is what makes the agent 'learn' from its own mistakes.",
+    },
+  },
+  {
+    id: "result-back",
+    at: 0.74,
+    label: { es: "10. Tool result al modelo", en: "10. Tool result fed back" },
+    description: {
+      es: "El resultado se agrega como un nuevo mensaje del rol tool. El loop arranca de nuevo desde el paso 5 con este turno extra de contexto.",
+      en: "The result is appended as a new tool-role message. The loop restarts from step 5 with this extra context turn.",
+    },
+  },
+  {
+    id: "answer",
+    at: 0.82,
+    label: { es: "11. Respuesta final", en: "11. Final answer" },
+    description: {
+      es: "Cuando el modelo no necesita más herramientas, emite texto. El harness lo streamea token a token al chat y termina el turno.",
+      en: "When the model needs no more tools, it emits text. The harness streams it token-by-token to the chat and ends the turn.",
+    },
+  },
+];
 
 function within(p: number, a: number, b: number) {
   return p >= a && p <= b;
@@ -118,14 +186,13 @@ function typed(s: string, p: number, start: number, end: number) {
   return s.slice(0, Math.floor(s.length * t));
 }
 
-type LevelId = 1 | 2 | 3;
-
 export default function CinematicScene() {
   const { t, lang: i18nLang } = useLang();
   const containerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
 
-  const [level, setLevel] = useState<LevelId>(1);
+  const [agentId, setAgentId] = useState<AgentId>("claude-code");
+  const agent = AGENTS[agentId];
   const [vw, setVw] = useState(1024);
   useEffect(() => {
     const update = () => setVw(window.innerWidth);
@@ -209,20 +276,17 @@ export default function CinematicScene() {
   };
 
   const stepNext = () => {
-    const anchors = STEPS[level];
-    const next = anchors.find((a) => a.at > progress + 0.005);
+    const next = STAGES.find((a) => a.at > progress + 0.005);
     if (next) seekToProgress(next.at);
   };
   const stepPrev = () => {
-    const anchors = STEPS[level];
-    const prev = [...anchors].reverse().find((a) => a.at < progress - 0.005);
+    const prev = [...STAGES].reverse().find((a) => a.at < progress - 0.005);
     if (prev) seekToProgress(prev.at);
     else seekToProgress(0);
   };
-  const currentStep = (() => {
-    const anchors = STEPS[level];
-    let cur = anchors[0];
-    for (const a of anchors) if (progress >= a.at - 0.005) cur = a;
+  const currentStage = (() => {
+    let cur = STAGES[0];
+    for (const a of STAGES) if (progress >= a.at - 0.005) cur = a;
     return cur;
   })();
 
@@ -264,23 +328,16 @@ export default function CinematicScene() {
     return t.streamLines.slice(0, i);
   }, [progress, t.streamLines]);
 
-  // Level gating
-  const allowToolCall = level >= 2;
-  const allowHooks = level >= 3;
-
-  const visibleCards = CARDS.filter((c) => {
-    if (level === 1) return c.id === "system" || c.id === "claude" || c.id === "env";
-    if (level === 2) return c.id !== "skill" || true; // all 6 visible at L2
-    return true; // L3 all
-  });
+  const visibleCards = agent.cards;
+  const allowHooks = agent.supportsHooks;
 
   const showPreHook  = allowHooks && within(progress, W.preHookFlash, W.preHookFlash + 0.06);
   const showPostHook = allowHooks && within(progress, W.postHook, W.postHook + 0.06);
-  const showToolCall = allowToolCall && progress > W.toolCallShow && progress < W.assistantStart;
+  const showToolCall = progress > W.toolCallShow && progress < W.assistantStart;
   const ctxConverging = progress > W.ctxConverge && progress < W.thinking1End + 0.02;
   const thinking =
-    (progress > W.thinking1End && progress < (allowToolCall ? W.toolCallShow : W.assistantStart)) ||
-    (allowToolCall && progress > W.resultBack && progress < W.assistantStart);
+    (progress > W.thinking1End && progress < W.toolCallShow) ||
+    (progress > W.resultBack && progress < W.assistantStart);
 
   return (
     <section
@@ -321,14 +378,38 @@ export default function CinematicScene() {
           </div>
         </motion.div>
 
-        {/* Level selector — top-center, always visible */}
-        <div className="absolute top-2 left-1/2 -translate-x-1/2 z-50 pointer-events-auto"
-             style={{ marginTop: progress < 0.06 ? 130 : 36, transition: "margin 0.5s ease" }}>
-          <LevelSelector level={level} setLevel={setLevel} reset={() => {
-            const el = containerRef.current; if (!el) return;
-            window.scrollTo({ top: window.scrollY + el.getBoundingClientRect().top, behavior: "smooth" });
-          }} />
+        {/* Agent selector — top-center, always visible */}
+        <div
+          className="absolute top-2 left-1/2 -translate-x-1/2 z-50 pointer-events-auto"
+          style={{
+            marginTop: progress < 0.06 ? 130 : 36,
+            transition: "margin 0.5s ease",
+          }}
+        >
+          <AgentSelector
+            agentId={agentId}
+            setAgent={setAgentId}
+            reset={() => {
+              const el = containerRef.current;
+              if (!el) return;
+              window.scrollTo({
+                top: window.scrollY + el.getBoundingClientRect().top,
+                behavior: "smooth",
+              });
+            }}
+          />
         </div>
+
+        {/* Stage explanation — sticky panel right side, hidden on mobile */}
+        {!isMobile && (
+          <StagePanel
+            stage={currentStage}
+            stageIndex={STAGES.findIndex((s) => s.id === currentStage.id)}
+            total={STAGES.length}
+            agent={agent}
+            lang={i18nLang}
+          />
+        )}
 
         {/* 3D camera-tilted stage */}
         <motion.div
@@ -350,7 +431,7 @@ export default function CinematicScene() {
             {/* Floating context cards */}
             {visibleCards.map((card) => (
               <Card3D
-                key={card.id}
+                key={card.key}
                 card={card}
                 progress={progress}
                 converging={ctxConverging}
@@ -480,9 +561,9 @@ export default function CinematicScene() {
                             <span className="text-white/40">id: tu_01k7…</span>
                           </div>
                           <pre className="px-3 py-2 text-white/80 leading-relaxed whitespace-pre-wrap">{`{
-  "path": "src/components/Header.tsx",
-  "old_string": "<nav>",
-  "new_string": "<nav><ThemeToggle/>"
+  "path": "CHANGELOG.md",
+  "old_string": "## [2.3.1] - 2026-04-12",
+  "new_string": "## [2.4.0] - …\\n …\\n\\n## [2.3.1] - 2026-04-12"
 }`}</pre>
                         </div>
 
@@ -511,23 +592,12 @@ export default function CinematicScene() {
                         </AnimatePresence>
 
                         {streamLines.length > 0 && (
-                          <div className="rounded-lg border border-cyan-400/30 bg-black/60 overflow-hidden">
-                            <div className="px-3 py-1.5 border-b border-cyan-400/20 flex items-center gap-1.5 text-cyan-300 mono text-[10px] uppercase tracking-wide">
-                              <Terminal size={11} /> {t.toolResult}
-                            </div>
-                            <div className="px-3 py-2 mono text-[12px] space-y-0.5">
-                              {streamLines.map((l, i) => (
-                                <motion.div
-                                  key={i}
-                                  initial={{ opacity: 0, x: -6 }}
-                                  animate={{ opacity: 1, x: 0 }}
-                                  className="text-emerald-300/90"
-                                >
-                                  <span className="text-white/30">$</span> {l}
-                                </motion.div>
-                              ))}
-                            </div>
-                          </div>
+                          <DiffView
+                            file="CHANGELOG.md"
+                            plus={6}
+                            minus={0}
+                            visibleLines={streamLines.length}
+                          />
                         )}
 
                         <AnimatePresence>
@@ -574,15 +644,15 @@ export default function CinematicScene() {
 
         {/* Playback controls */}
         <div className="absolute bottom-5 inset-x-0 z-50 flex flex-col items-center gap-2 pointer-events-none">
-          {/* Step label */}
+          {/* Stage label */}
           <div
-            key={currentStep.id}
+            key={currentStage.id}
             className="pointer-events-auto glass rounded-full px-3 py-1 mono text-[11px] text-white/85"
           >
             <span className="text-white/45 mr-2">
-              {STEPS[level].findIndex((s) => s.id === currentStep.id) + 1}/{STEPS[level].length}
+              {STAGES.findIndex((s) => s.id === currentStage.id) + 1}/{STAGES.length}
             </span>
-            {currentStep.label[i18nLang as "es" | "en"] || currentStep.label.es}
+            {currentStage.label[i18nLang as "es" | "en"] || currentStage.label.es}
           </div>
 
           <div className="glass rounded-full px-1.5 py-1.5 flex items-center gap-1 pointer-events-auto">
@@ -660,8 +730,12 @@ function Card3D({
   cardWidth: number;
   isMobile: boolean;
 }) {
-  const { t } = useLang();
-  const data = t.ctx[card.id];
+  const { t, lang } = useLang();
+  const data = {
+    label: pickLang(card.label, lang),
+    source: pickLang(card.source, lang),
+    body: pickLang(card.body, lang),
+  };
 
   const entryT = (progress - card.enter) / (card.settle - card.enter);
   const ease = Math.min(1, Math.max(0, entryT));
@@ -756,41 +830,189 @@ function Card3D({
   );
 }
 
-function LevelSelector({
-  level,
-  setLevel,
+type DiffLine =
+  | { kind: "hunk"; text: string }
+  | { kind: "context"; text: string }
+  | { kind: "minus"; text: string }
+  | { kind: "plus"; text: string };
+
+const DIFF_LINES: DiffLine[] = [
+  { kind: "hunk",    text: "@@ -1,4 +1,10 @@" },
+  { kind: "context", text: "# Changelog" },
+  { kind: "context", text: "" },
+  { kind: "plus",    text: "## [2.4.0] - 2026-05-03" },
+  { kind: "plus",    text: "### Added" },
+  { kind: "plus",    text: "- Retry logic for failed API calls" },
+  { kind: "plus",    text: "### Fixed" },
+  { kind: "plus",    text: "- Memory leak in session handler" },
+  { kind: "plus",    text: "" },
+  { kind: "context", text: "## [2.3.1] - 2026-04-12" },
+];
+
+function DiffView({
+  file,
+  plus,
+  minus,
+  visibleLines,
+}: {
+  file: string;
+  plus: number;
+  minus: number;
+  visibleLines: number;
+}) {
+  // visibleLines (1..N) maps stream progress to how many diff lines to reveal.
+  const max = DIFF_LINES.length;
+  const reveal = Math.min(max, Math.max(0, Math.round((visibleLines / 4) * max)));
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="rounded-lg border border-cyan-400/30 bg-black/65 overflow-hidden"
+    >
+      {/* tab-like file header */}
+      <div className="flex items-center justify-between px-3 py-1.5 border-b border-cyan-400/20 bg-black/40">
+        <div className="flex items-center gap-2 mono text-[11px]">
+          <FileText size={11} className="text-cyan-300" />
+          <span className="text-white/85">{file}</span>
+        </div>
+        <div className="flex items-center gap-2 mono text-[10px]">
+          <span className="text-emerald-300">+{plus}</span>
+          <span className="text-rose-300">−{minus}</span>
+        </div>
+      </div>
+      {/* diff body with line numbers */}
+      <div className="mono text-[11.5px] leading-[1.55]">
+        {DIFF_LINES.slice(0, reveal).map((l, i) => {
+          const bg =
+            l.kind === "plus"
+              ? "rgba(16,185,129,0.10)"
+              : l.kind === "minus"
+                ? "rgba(244,63,94,0.10)"
+                : l.kind === "hunk"
+                  ? "rgba(167,139,250,0.08)"
+                  : "transparent";
+          const fg =
+            l.kind === "plus"
+              ? "#86efac"
+              : l.kind === "minus"
+                ? "#fca5a5"
+                : l.kind === "hunk"
+                  ? "#a78bfa"
+                  : "rgba(255,255,255,0.6)";
+          const sigil =
+            l.kind === "plus" ? "+" : l.kind === "minus" ? "−" : l.kind === "hunk" ? "@" : " ";
+          return (
+            <motion.div
+              key={i}
+              initial={{ opacity: 0, x: -6 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.2 }}
+              className="grid grid-cols-[28px_18px_1fr] items-center"
+              style={{ background: bg, color: fg }}
+            >
+              <span className="text-right pr-2 text-white/30 select-none mono text-[10px]">
+                {l.kind === "hunk" ? "" : i}
+              </span>
+              <span className="text-center select-none">{sigil}</span>
+              <span className="pr-3 whitespace-pre-wrap break-all">
+                {l.text || " "}
+              </span>
+            </motion.div>
+          );
+        })}
+      </div>
+    </motion.div>
+  );
+}
+
+function AgentSelector({
+  agentId,
+  setAgent,
   reset,
 }: {
-  level: LevelId;
-  setLevel: (l: LevelId) => void;
+  agentId: AgentId;
+  setAgent: (id: AgentId) => void;
   reset: () => void;
 }) {
-  const { t } = useLang();
   return (
-    <div className="glass rounded-full p-1 flex items-center gap-1">
+    <div className="glass rounded-full p-1 flex items-center gap-1 flex-wrap justify-center">
       <span className="mono text-[10px] uppercase tracking-wider text-white/45 px-2.5">
-        {t.levelLabel}
+        agent
       </span>
-      {t.levels.map((lv) => {
-        const active = level === lv.id;
+      {AGENT_ORDER.map((id) => {
+        const a = AGENTS[id];
+        const active = id === agentId;
         return (
           <button
-            key={lv.id}
+            key={id}
             onClick={() => {
-              setLevel(lv.id);
+              setAgent(id);
               reset();
             }}
-            className="relative px-3 py-1.5 rounded-full transition mono text-[11px]"
+            className="relative px-3 py-1.5 rounded-full transition text-[11px] mono"
             style={{
-              background: active ? "rgba(255,255,255,0.14)" : "transparent",
+              background: active ? `${a.accent}28` : "transparent",
               color: active ? "#fff" : "rgba(255,255,255,0.55)",
+              boxShadow: active ? `0 0 0 1px ${a.accent}66 inset` : "none",
             }}
           >
-            <span className="font-semibold mr-1">{lv.id}</span>
-            {lv.name}
+            <span
+              className="inline-block w-1.5 h-1.5 rounded-full mr-1.5 align-middle"
+              style={{ background: a.accent }}
+            />
+            {a.name}
           </button>
         );
       })}
+    </div>
+  );
+}
+
+function StagePanel({
+  stage,
+  stageIndex,
+  total,
+  agent,
+  lang,
+}: {
+  stage: Stage;
+  stageIndex: number;
+  total: number;
+  agent: { name: string; modelLabel: string; supportsHooks: boolean; hooksNote: { es: string; en: string } };
+  lang: string;
+}) {
+  const isHookStage = stage.id === "pre-hook" || stage.id === "post-hook";
+  const noHooksNote =
+    isHookStage && !agent.supportsHooks
+      ? agent.hooksNote[(lang as "es" | "en") || "es"]
+      : null;
+  return (
+    <div className="absolute top-1/2 right-6 -translate-y-1/2 z-40 hidden lg:block w-[300px] pointer-events-none">
+      <motion.div
+        key={stage.id}
+        initial={{ opacity: 0, x: 20 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ duration: 0.3 }}
+        className="glass rounded-2xl p-4 pointer-events-auto"
+      >
+        <div className="flex items-center justify-between mb-2">
+          <span className="mono text-[10px] uppercase tracking-wider text-white/45">
+            {stageIndex + 1} / {total}
+          </span>
+          <span className="mono text-[10px] text-white/50">{agent.name}</span>
+        </div>
+        <h3 className="text-[15px] font-semibold text-white mb-2">
+          {stage.label[(lang as "es" | "en") || "es"]}
+        </h3>
+        <p className="text-[12.5px] text-white/70 leading-relaxed">
+          {stage.description[(lang as "es" | "en") || "es"]}
+        </p>
+        {noHooksNote && (
+          <div className="mt-3 px-3 py-2 rounded-md border border-amber-400/30 bg-amber-500/10 text-amber-200 mono text-[11px] leading-relaxed">
+            ⚠ {noHooksNote}
+          </div>
+        )}
+      </motion.div>
     </div>
   );
 }
@@ -828,8 +1050,8 @@ function InjectionArrows({
       <defs>
         {cards.map((c) => (
           <marker
-            key={c.id}
-            id={`arrow-${c.id}`}
+            key={c.key}
+            id={`arrow-${c.key}`}
             viewBox="0 0 10 10"
             refX="8"
             refY="5"
@@ -857,7 +1079,7 @@ function InjectionArrows({
         const path = `M ${cardEdgeX} ${cardY} Q ${ctrlX} ${ctrlY}, ${chatEdgeX} ${chatY}`;
         const op = converging ? Math.max(0, 1 - (progress - c.converge) * 30) : 1;
         return (
-          <g key={c.id} opacity={op}>
+          <g key={c.key} opacity={op}>
             <motion.path
               d={path}
               fill="none"
@@ -865,7 +1087,7 @@ function InjectionArrows({
               strokeWidth={2}
               strokeDasharray="6 6"
               strokeOpacity="0.85"
-              markerEnd={`url(#arrow-${c.id})`}
+              markerEnd={`url(#arrow-${c.key})`}
               initial={{ pathLength: 0 }}
               animate={{ pathLength: 1 }}
               transition={{ duration: 0.6, ease: "easeOut" }}
@@ -893,15 +1115,6 @@ function InjectionArrows({
   );
 }
 
-function colorOf(id: CtxCard["id"]) {
-  return id === "system"
-    ? "#a78bfa"
-    : id === "claude"
-      ? "#22d3ee"
-      : id === "tools"
-        ? "#34d399"
-        : "#fbbf24";
-}
 
 function ConvergenceBeam() {
   return (
@@ -962,7 +1175,7 @@ function MergeBurst({ cards }: { cards: CtxCard[] }) {
           const size = 3 + (i % 3);
           return (
             <motion.span
-              key={`${c.id}-${i}`}
+              key={`${c.key}-${i}`}
               className="absolute rounded-full"
               style={{
                 width: size,
