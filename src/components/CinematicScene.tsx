@@ -783,7 +783,7 @@ function Card3D({
 
   return (
     <motion.div
-      className="absolute top-1/2 left-1/2 pointer-events-none"
+      className="absolute top-1/2 left-1/2 pointer-events-auto cursor-default"
       style={{
         width: cardWidth,
         marginLeft: -cardWidth / 2,
@@ -793,6 +793,14 @@ function Card3D({
       }}
       animate={{ opacity, x, y, z: zVal, rotateY: rY, scale, filter: blur ? `blur(${blur}px)` : "blur(0px)" }}
       transition={{ duration: 0.15, ease: "linear" }}
+      whileHover={{
+        scale: scale * 1.08,
+        z: 80,
+        rotateY: 0,
+        zIndex: 60,
+        filter: "blur(0px)",
+        transition: { duration: 0.25 },
+      }}
     >
       <div
         className="rounded-xl glass overflow-hidden"
@@ -986,32 +994,43 @@ function StagePanel({
     isHookStage && !agent.supportsHooks
       ? agent.hooksNote[(lang as "es" | "en") || "es"]
       : null;
+  // Horizontal banner anchored at the bottom of the stage, above the
+  // playback controls — so it never overlaps the floating cards on the
+  // sides of the chat panel.
   return (
-    <div className="absolute top-1/2 right-6 -translate-y-1/2 z-40 hidden lg:block w-[300px] pointer-events-none">
+    <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-40 w-[min(720px,92vw)] pointer-events-none">
       <motion.div
         key={stage.id}
-        initial={{ opacity: 0, x: 20 }}
-        animate={{ opacity: 1, x: 0 }}
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
-        className="glass rounded-2xl p-4 pointer-events-auto"
+        className="glass rounded-2xl px-4 py-3 pointer-events-auto flex items-start gap-4"
       >
-        <div className="flex items-center justify-between mb-2">
-          <span className="mono text-[10px] uppercase tracking-wider text-white/45">
-            {stageIndex + 1} / {total}
+        <div className="shrink-0 flex flex-col items-center justify-center w-12 h-12 rounded-xl bg-white/5 border border-white/10">
+          <span className="mono text-[9px] uppercase tracking-wider text-white/45">
+            stage
           </span>
-          <span className="mono text-[10px] text-white/50">{agent.name}</span>
+          <span className="text-base font-semibold text-white leading-none mt-0.5">
+            {stageIndex + 1}
+            <span className="text-white/40 text-xs">/{total}</span>
+          </span>
         </div>
-        <h3 className="text-[15px] font-semibold text-white mb-2">
-          {stage.label[(lang as "es" | "en") || "es"]}
-        </h3>
-        <p className="text-[12.5px] text-white/70 leading-relaxed">
-          {stage.description[(lang as "es" | "en") || "es"]}
-        </p>
-        {noHooksNote && (
-          <div className="mt-3 px-3 py-2 rounded-md border border-amber-400/30 bg-amber-500/10 text-amber-200 mono text-[11px] leading-relaxed">
-            ⚠ {noHooksNote}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between gap-3 mb-1">
+            <h3 className="text-[14px] font-semibold text-white truncate">
+              {stage.label[(lang as "es" | "en") || "es"]}
+            </h3>
+            <span className="mono text-[10px] text-white/45 shrink-0">{agent.name}</span>
           </div>
-        )}
+          <p className="text-[12px] text-white/65 leading-snug">
+            {stage.description[(lang as "es" | "en") || "es"]}
+          </p>
+          {noHooksNote && (
+            <div className="mt-2 px-2.5 py-1.5 rounded-md border border-amber-400/30 bg-amber-500/10 text-amber-200 mono text-[10.5px] leading-snug">
+              ⚠ {noHooksNote}
+            </div>
+          )}
+        </div>
       </motion.div>
     </div>
   );
