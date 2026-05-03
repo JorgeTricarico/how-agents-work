@@ -233,7 +233,7 @@ export default function CinematicScene() {
   const agent = AGENTS[agentId];
   const [vw, setVw] = useState(1024);
   const [focusedCard, setFocusedCard] = useState<string | null>(null);
-  const [stagePanelOpen, setStagePanelOpen] = useState(true);
+  const [stagePanelOpen, setStagePanelOpen] = useState(false);
   const outputPanelRef = useRef<HTMLDivElement>(null);
   const outputContentRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -467,7 +467,9 @@ export default function CinematicScene() {
           />
         </div>
 
-        {/* Stage explanation + playback controls — top-left, collapsible card */}
+        {/* Stage info — top-left, COLLAPSED by default (just a pill) so it
+            never covers the floating context cards on the left. Click the
+            pill to read the full description. */}
         <StagePanel
           stage={currentStage}
           stageIndex={STAGES.findIndex((s) => s.id === currentStage.id)}
@@ -476,6 +478,10 @@ export default function CinematicScene() {
           lang={i18nLang}
           open={stagePanelOpen}
           setOpen={setStagePanelOpen}
+        />
+
+        {/* Playback controls — bottom-left, separate from the stage info */}
+        <PlaybackBar
           progress={progress}
           playing={playing}
           onPlay={() => (playing ? stopPlay() : startPlay())}
@@ -1071,12 +1077,6 @@ function StagePanel({
   lang,
   open,
   setOpen,
-  progress,
-  playing,
-  onPlay,
-  onPrev,
-  onNext,
-  onReset,
 }: {
   stage: Stage;
   stageIndex: number;
@@ -1085,12 +1085,6 @@ function StagePanel({
   lang: string;
   open: boolean;
   setOpen: (b: boolean) => void;
-  progress: number;
-  playing: boolean;
-  onPlay: () => void;
-  onPrev: () => void;
-  onNext: () => void;
-  onReset: () => void;
 }) {
   const isHookStage = stage.id === "pre-hook" || stage.id === "post-hook";
   const noHooksNote =
@@ -1148,56 +1142,73 @@ function StagePanel({
           </div>
         )}
 
-        {/* Playback controls — footer of the StagePanel so all navigation
-            lives in one place on the left and never overlaps the chat
-            stage on the right. */}
-        <div className="px-2 py-2 border-t border-white/5 flex items-center gap-1">
-          <button
-            onClick={onPrev}
-            className="h-8 w-8 rounded-full hover:bg-white/10 text-white/80 flex items-center justify-center transition"
-            aria-label="previous step"
-            title="anterior (←)"
-          >
-            <ChevronLeft size={14} />
-          </button>
-          <button
-            onClick={onPlay}
-            className="h-8 w-8 rounded-full bg-white text-black flex items-center justify-center hover:bg-white/90 transition"
-            aria-label={playing ? "pause" : "play next"}
-            title={playing ? "pausar (espacio)" : "siguiente (espacio)"}
-          >
-            {playing ? <Pause size={12} /> : <Play size={12} />}
-          </button>
-          <button
-            onClick={onNext}
-            className="h-8 w-8 rounded-full hover:bg-white/10 text-white/80 flex items-center justify-center transition"
-            aria-label="next step"
-            title="siguiente (→)"
-          >
-            <ChevronRight size={14} />
-          </button>
-          <button
-            onClick={onReset}
-            className="h-8 w-8 rounded-full hover:bg-white/10 text-white/70 flex items-center justify-center transition"
-            aria-label="reset"
-            title="reiniciar"
-          >
-            <RotateCcw size={12} />
-          </button>
-          <div className="flex-1 mx-2 h-1 rounded-full bg-white/8 overflow-hidden">
-            <div
-              className="h-full"
-              style={{
-                width: `${progress * 100}%`,
-                background:
-                  "linear-gradient(90deg,#a78bfa,#22d3ee,#f472b6)",
-              }}
-            />
-          </div>
-          <span className="mono text-[10px] text-white/45 shrink-0 pr-1">
-            {Math.round(progress * 100)}%
-          </span>
+      </div>
+    </div>
+  );
+}
+
+function PlaybackBar({
+  progress,
+  playing,
+  onPlay,
+  onPrev,
+  onNext,
+  onReset,
+}: {
+  progress: number;
+  playing: boolean;
+  onPlay: () => void;
+  onPrev: () => void;
+  onNext: () => void;
+  onReset: () => void;
+}) {
+  return (
+    <div className="absolute bottom-4 left-4 z-50 pointer-events-auto">
+      <div className="glass rounded-full px-2 py-1.5 flex items-center gap-1.5">
+        <button
+          onClick={onPrev}
+          className="h-9 w-9 rounded-full hover:bg-white/10 text-white/80 flex items-center justify-center transition"
+          aria-label="previous step"
+          title="anterior (←)"
+        >
+          <ChevronLeft size={15} />
+        </button>
+        <button
+          onClick={onPlay}
+          className="h-9 w-9 rounded-full bg-white text-black flex items-center justify-center hover:bg-white/90 transition"
+          aria-label={playing ? "pause" : "play next"}
+          title={playing ? "pausar (espacio)" : "siguiente (espacio)"}
+        >
+          {playing ? <Pause size={13} /> : <Play size={13} />}
+        </button>
+        <button
+          onClick={onNext}
+          className="h-9 w-9 rounded-full hover:bg-white/10 text-white/80 flex items-center justify-center transition"
+          aria-label="next step"
+          title="siguiente (→)"
+        >
+          <ChevronRight size={15} />
+        </button>
+        <button
+          onClick={onReset}
+          className="h-9 w-9 rounded-full hover:bg-white/10 text-white/70 flex items-center justify-center transition"
+          aria-label="reset"
+          title="reiniciar"
+        >
+          <RotateCcw size={13} />
+        </button>
+        <div className="w-24 mx-1 h-1 rounded-full bg-white/10 overflow-hidden">
+          <div
+            className="h-full"
+            style={{
+              width: `${progress * 100}%`,
+              background: "linear-gradient(90deg,#a78bfa,#22d3ee,#f472b6)",
+            }}
+          />
         </div>
+        <span className="mono text-[10px] text-white/55 shrink-0 px-1">
+          {Math.round(progress * 100)}%
+        </span>
       </div>
     </div>
   );
