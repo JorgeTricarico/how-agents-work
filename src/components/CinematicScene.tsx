@@ -74,6 +74,11 @@ type Stage = {
   description: { es: string; en: string };
 };
 
+// Anchor positions are tuned to land at the *peak* of each effect:
+//   ctx-* anchors land in the middle of the slot's "fully settled, arrows
+//   drawn, card visible" window (between settle 0.025 and converge 0.05
+//   after enter). That way pressing → (or play) lands you on the moment
+//   the lines are complete, not at the start of the entry animation.
 const STAGES: Stage[] = [
   {
     id: "input",
@@ -86,7 +91,7 @@ const STAGES: Stage[] = [
   },
   {
     id: "user-typed",
-    at: 0.10,
+    at: 0.13,
     label: { es: "2. Mensaje recibido", en: "2. Message received" },
     description: {
       es: "El mensaje queda como turno user pendiente. El harness arranca a leer todo lo que tiene que adjuntar.",
@@ -95,7 +100,7 @@ const STAGES: Stage[] = [
   },
   {
     id: "ctx-always",
-    at: 0.18,
+    at: 0.20,
     label: { es: "3. Reglas siempre activas", en: "3. Always-on rules" },
     description: {
       es: "El system prompt (fijo del vendor) y las reglas que siempre se cargan — AGENTS.md / CLAUDE.md — entran al orbe primero. Definen el comportamiento base del agente para cualquier prompt.",
@@ -104,7 +109,7 @@ const STAGES: Stage[] = [
   },
   {
     id: "ctx-path",
-    at: 0.24,
+    at: 0.26,
     label: { es: "4. Reglas por path + skills", en: "4. Path rules + skills" },
     description: {
       es: "Después se evalúan las reglas con globs (.cursor/rules/*.mdc, .github/instructions/*.instructions.md, .claude/rules/*) que matcheen los archivos a tocar, y los skills/prompts on-demand que el modelo decidió invocar.",
@@ -113,7 +118,7 @@ const STAGES: Stage[] = [
   },
   {
     id: "ctx-tools",
-    at: 0.30,
+    at: 0.32,
     label: { es: "5. Tools + entorno", en: "5. Tools + env" },
     description: {
       es: "Los esquemas JSON de cada tool disponible y el contexto de runtime (cwd, branch, OS) se anexan al final. Sin esto el modelo no sabe qué puede llamar.",
@@ -122,7 +127,7 @@ const STAGES: Stage[] = [
   },
   {
     id: "ctx-merged",
-    at: 0.38,
+    at: 0.39,
     label: { es: "6. Prompt final", en: "6. Final prompt" },
     description: {
       es: "Todo lo anterior se concatena en un solo payload de mensajes. Ese payload — y nada más — es lo que recibe la API del LLM.",
@@ -131,7 +136,7 @@ const STAGES: Stage[] = [
   },
   {
     id: "inference",
-    at: 0.42,
+    at: 0.44,
     label: { es: "7. Inferencia", en: "7. Inference" },
     description: {
       es: "El modelo decodifica tokens. Si decide que necesita una herramienta, emite un bloque structured tool_use en vez de texto libre.",
@@ -140,7 +145,7 @@ const STAGES: Stage[] = [
   },
   {
     id: "tool-intent",
-    at: 0.46,
+    at: 0.48,
     label: { es: "8. Intención de tool_use", en: "8. tool_use intent" },
     description: {
       es: "El modelo todavía no ejecuta nada — sólo dice 'quiero llamar Edit con estos argumentos'. El harness es quien ejecuta.",
@@ -149,7 +154,7 @@ const STAGES: Stage[] = [
   },
   {
     id: "pre-hook",
-    at: 0.50,
+    at: 0.49,
     label: { es: "9. PreToolUse hook", en: "9. PreToolUse hook" },
     description: {
       es: "Antes de ejecutar, el harness corre tus hooks de PreToolUse. Reciben el JSON de la llamada por stdin y pueden permitir, mutar o denegar (exit 2). Acá es donde bloqueás cosas peligrosas como rm -rf o git push --force.",
@@ -158,7 +163,7 @@ const STAGES: Stage[] = [
   },
   {
     id: "tool-exec",
-    at: 0.58,
+    at: 0.62,
     label: { es: "10. Ejecución de la tool", en: "10. Tool execution" },
     description: {
       es: "El harness ejecuta la herramienta en sandbox: aplica el Edit, corre el comando, hace el fetch. Captura stdout, stderr y exit code. Los errores no son excepciones — vuelven como tool_result.",
@@ -167,7 +172,7 @@ const STAGES: Stage[] = [
   },
   {
     id: "post-hook",
-    at: 0.68,
+    at: 0.69,
     label: { es: "11. PostToolUse hook", en: "11. PostToolUse hook" },
     description: {
       es: "Tras la ejecución corren tus hooks de PostToolUse: lint, format, typecheck, audit. Si fallan pueden devolver feedback al modelo, que lo ve como mensaje y reacciona — esta es la parte que hace que el agente 'aprenda' de sus propios errores.",
@@ -185,7 +190,7 @@ const STAGES: Stage[] = [
   },
   {
     id: "answer",
-    at: 0.82,
+    at: 0.86,
     label: { es: "13. Respuesta final", en: "13. Final answer" },
     description: {
       es: "Cuando el modelo no necesita más herramientas, emite texto. El harness lo streamea token a token al chat y termina el turno.",
@@ -264,25 +269,33 @@ export default function CinematicScene() {
     setPlaying(false);
   };
 
-  const startPlay = () => {
+  // Animates the scroll from current position to a specific target
+  // progress (0..1 within the cinematic), then auto-stops. Used by
+  // step nav and the play button — every action is "play to next
+  // beat", not "play to end".
+  const playToProgress = (targetProgress: number) => {
     if (!containerRef.current) return;
+    stopPlay();
     const rect = containerRef.current.getBoundingClientRect();
     const sectionTop = window.scrollY + rect.top;
-    const sectionBottom = sectionTop + rect.height - window.innerHeight;
-    const fromY = Math.max(window.scrollY, sectionTop);
-    const toY = sectionBottom;
-    if (toY <= fromY) return;
+    const total = rect.height - window.innerHeight;
+    if (total <= 0) return;
+    const toY = sectionTop + targetProgress * total;
+    const fromY = window.scrollY;
+    const distance = Math.abs(toY - fromY);
+    if (distance < 2) return;
+    // Pixels-per-second-ish pace: 1 step (~6% of section height) lands
+    // in ~2.4s. Clamp to a comfortable range.
+    const duration = Math.max(900, Math.min(4000, (distance / total) * 30000));
     setPlaying(true);
-    // Slower auto-play so each beat has time to land. ~95s for the
-    // full scene; proportionally less if user already scrolled in.
-    const duration = Math.max(12000, ((toY - fromY) / rect.height) * 95000);
     playStartRef.current = { ts: performance.now(), fromY, toY };
 
     const tick = (now: number) => {
       const s = playStartRef.current;
       if (!s) return;
       const k = Math.min(1, (now - s.ts) / duration);
-      const eased = 1 - Math.pow(1 - k, 2);
+      // easeInOutCubic
+      const eased = k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
       window.scrollTo(0, s.fromY + (s.toY - s.fromY) * eased);
       if (k >= 1) {
         stopPlay();
@@ -293,34 +306,29 @@ export default function CinematicScene() {
     playRafRef.current = requestAnimationFrame(tick);
   };
 
-  const resetToTop = () => {
-    stopPlay();
-    if (!containerRef.current) return;
-    const rect = containerRef.current.getBoundingClientRect();
-    const sectionTop = window.scrollY + rect.top;
-    window.scrollTo({ top: sectionTop, behavior: "smooth" });
+  // Play button now means: play forward to the NEXT anchor only.
+  const startPlay = () => {
+    const next = STAGES.find((a) => a.at > progress + 0.005);
+    if (next) {
+      playToProgress(next.at);
+    } else {
+      // Already past the last anchor — play to the very end of the section
+      playToProgress(1.0);
+    }
   };
 
-  // Jump to a specific beat anchor (0..1 progress) by computing target scroll.
-  const seekToProgress = (p: number) => {
-    stopPlay();
-    if (!containerRef.current) return;
-    const rect = containerRef.current.getBoundingClientRect();
-    const sectionTop = window.scrollY + rect.top;
-    const total = rect.height - window.innerHeight;
-    if (total <= 0) return;
-    const target = sectionTop + p * total;
-    window.scrollTo({ top: target, behavior: "smooth" });
+  const resetToTop = () => {
+    playToProgress(0);
   };
 
   const stepNext = () => {
     const next = STAGES.find((a) => a.at > progress + 0.005);
-    if (next) seekToProgress(next.at);
+    if (next) playToProgress(next.at);
   };
   const stepPrev = () => {
     const prev = [...STAGES].reverse().find((a) => a.at < progress - 0.005);
-    if (prev) seekToProgress(prev.at);
-    else seekToProgress(0);
+    if (prev) playToProgress(prev.at);
+    else playToProgress(0);
   };
   const currentStage = (() => {
     let cur = STAGES[0];
