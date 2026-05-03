@@ -1353,59 +1353,94 @@ function ConvergenceOrb({
         transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
       />
 
-      {/* Stage label tag below the orb */}
+      {/* Stage label tag — placed further below the orb so it doesn't
+          overlap the halo or fight with the OutputPanel header. Only
+          visible when the orb is "loaded" enough. */}
       <motion.div
-        className="absolute mono text-[10px] uppercase tracking-wider whitespace-nowrap"
+        className="absolute mono text-[9px] uppercase tracking-[0.2em] whitespace-nowrap"
         style={{
-          left: -90,
-          top: size + 14,
-          width: 180,
+          left: -100,
+          top: size + 26,
+          width: 200,
           textAlign: "center",
-          color: isPostMerge ? "#fff" : "rgba(255,255,255,0.5)",
+          color: "rgba(255,255,255,0.55)",
         }}
-        animate={{ opacity: buildup > 0.3 ? 1 : 0.5 }}
+        animate={{ opacity: buildup > 0.5 ? 0.85 : 0 }}
+        transition={{ duration: 0.4 }}
       >
-        prompt al modelo
+        prompt → modelo
       </motion.div>
 
       {/* Crystallize beam — orb shoots DOWN to the OutputPanel top edge.
-          Specific endpoint = a subtle landing flare so it's clear where
-          the beam terminates. */}
+          Triple-layer (core + outer glow + landing flare) so it reads
+          as "the response is materializing here right now." */}
       <AnimatePresence>
         {(isInference || isAnswerStream) && (
           <>
+            {/* Wide outer glow */}
+            <motion.div
+              initial={{ opacity: 0, scaleY: 0 }}
+              animate={{ opacity: 0.7, scaleY: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute"
+              style={{
+                left: -10,
+                top: 0,
+                height: orbGap / 2,
+                width: 20,
+                background:
+                  "linear-gradient(to bottom, rgba(167,139,250,0.6), rgba(34,211,238,0.3) 60%, transparent)",
+                transformOrigin: "top",
+                filter: "blur(8px)",
+                borderRadius: 10,
+              }}
+              transition={{ duration: 0.6, ease: "easeOut" }}
+            />
+            {/* Bright core */}
             <motion.div
               initial={{ opacity: 0, scaleY: 0 }}
               animate={{ opacity: 1, scaleY: 1 }}
               exit={{ opacity: 0 }}
               className="absolute"
               style={{
-                left: -3,
+                left: -2,
                 top: 0,
                 height: orbGap / 2,
-                width: 6,
+                width: 4,
                 background:
-                  "linear-gradient(to bottom, rgba(255,255,255,0.95), rgba(167,139,250,0.7) 30%, rgba(34,211,238,0.45) 60%, rgba(34,211,238,0))",
+                  "linear-gradient(to bottom, rgba(255,255,255,1), rgba(167,139,250,0.85) 30%, rgba(34,211,238,0.55) 60%, rgba(34,211,238,0))",
                 transformOrigin: "top",
-                filter: "blur(0.4px)",
-                borderRadius: 3,
+                borderRadius: 2,
               }}
               transition={{ duration: 0.6, ease: "easeOut" }}
             />
-            {/* Landing flare at the OutputPanel top edge */}
+            {/* Animated traveling pulse along the beam */}
+            <motion.div
+              className="absolute rounded-full"
+              style={{
+                left: -4,
+                width: 8,
+                height: 8,
+                background: "rgba(255,255,255,0.95)",
+                boxShadow: "0 0 20px rgba(255,255,255,0.95), 0 0 40px rgba(167,139,250,0.7)",
+              }}
+              animate={{ top: [0, orbGap / 2 - 8] }}
+              transition={{ duration: 1.4, repeat: Infinity, ease: "easeIn" }}
+            />
+            {/* Landing flare */}
             <motion.div
               initial={{ opacity: 0, scale: 0.4 }}
-              animate={{ opacity: [0, 1, 0.85], scale: [0.4, 1.3, 1] }}
+              animate={{ opacity: [0.2, 1, 0.85], scale: [0.4, 1.4, 1.1] }}
               exit={{ opacity: 0 }}
               className="absolute rounded-full"
               style={{
-                left: -16,
-                top: orbGap / 2 - 16,
-                width: 32,
-                height: 32,
+                left: -22,
+                top: orbGap / 2 - 22,
+                width: 44,
+                height: 44,
                 background:
                   "radial-gradient(circle, rgba(255,255,255,0.95), rgba(167,139,250,0.5) 40%, transparent 70%)",
-                filter: "blur(2px)",
+                filter: "blur(3px)",
               }}
               transition={{ duration: 0.8, ease: "easeOut" }}
             />
@@ -1758,40 +1793,40 @@ const TOKEN_LABELS = [
 ];
 
 function FloatingTokens() {
-  // Restrict to the lower half of the viewport so they don't crowd the
-  // top area where StagePanel / AgentSelector / lang toggle live.
-  const items = useMemo(
-    () =>
-      TOKEN_LABELS.map((label, i) => {
-        const top = 38 + ((i * 71) % 55);     // 38..93
-        const left = ((i * 137) % 92) + 3;     // 3..95
-        const dur = 14 + (i % 6) * 3;
-        const delay = (i % 7) * 1.4;
-        const drift = 12 + (i % 5) * 5;
-        const colors = ["#a78bfa", "#22d3ee", "#f472b6", "#fbbf24", "#34d399"];
-        const color = colors[i % colors.length];
-        return { label, top, left, dur, delay, drift, color };
-      }),
-    [],
-  );
+  // Subtle background-only — keep them very far from the central stage
+  // (only on the outer edges) and dim. Half as many as before so the
+  // viewport feels calmer.
+  const items = useMemo(() => {
+    const labels = TOKEN_LABELS.slice(0, 8); // half
+    return labels.map((label, i) => {
+      // Push to extreme left/right corners only; never near the center
+      const isLeft = i % 2 === 0;
+      const left = isLeft ? 1 + ((i * 13) % 8) : 88 + ((i * 17) % 9);
+      const top = 55 + ((i * 71) % 38);
+      const dur = 18 + (i % 5) * 4;
+      const delay = (i % 7) * 1.4;
+      const drift = 10 + (i % 4) * 4;
+      const colors = ["#a78bfa", "#22d3ee", "#f472b6", "#fbbf24", "#34d399"];
+      const color = colors[i % colors.length];
+      return { label, top, left, dur, delay, drift, color };
+    });
+  }, []);
 
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden">
       {items.map((it, idx) => (
         <motion.span
           key={idx}
-          className="absolute mono text-[10px] whitespace-nowrap"
+          className="absolute mono text-[9px] whitespace-nowrap"
           style={{
             top: `${it.top}%`,
             left: `${it.left}%`,
-            color: `${it.color}aa`,
-            textShadow: `0 0 12px ${it.color}66`,
-            opacity: 0.45,
+            color: `${it.color}66`,
+            opacity: 0.2,
           }}
           animate={{
             y: [0, -it.drift, 0, it.drift, 0],
-            x: [0, it.drift / 2, 0, -it.drift / 2, 0],
-            opacity: [0.25, 0.55, 0.35, 0.5, 0.25],
+            opacity: [0.1, 0.25, 0.15, 0.22, 0.1],
           }}
           transition={{
             duration: it.dur,
