@@ -447,27 +447,11 @@ export default function CinematicScene() {
         <ParallaxOrb x={drift3} color="#f472b6" top="38%" left="42%" size={380} blur={55} opacity={0.4} />
         <FloatingTokens />
 
-        {/* Hero headline — only mounted at the very start of the scroll,
-            removed from the DOM (not just opacity 0) once the user has
-            scrolled into the scene so it cannot possibly cover anything. */}
-        {progress < 0.06 && (
-          <motion.div
-            className="absolute top-0 inset-x-0 z-40 px-6 pt-12 md:pt-16 text-center pointer-events-none"
-            style={{ opacity: Math.max(0, 1 - progress * 18) }}
-          >
-            <h1 className="text-2xl md:text-4xl font-semibold tracking-tight leading-[1.05]">
-              {t.cinemaTitle1} <span className="gradient-text">{t.cinemaTitle2}</span>
-            </h1>
-          </motion.div>
-        )}
-
-        {/* Agent selector — top-center, always visible */}
+        {/* Agent selector — top-center, always visible. Headline removed
+            entirely — caused recurring overlap complaints and the AGENT
+            selector + StagePanel already convey 'what is this'. */}
         <div
-          className="absolute top-2 left-1/2 -translate-x-1/2 z-50 pointer-events-auto"
-          style={{
-            marginTop: progress < 0.06 ? 130 : 36,
-            transition: "margin 0.5s ease",
-          }}
+          className="absolute top-3 left-1/2 -translate-x-1/2 z-50 pointer-events-auto"
         >
           <AgentSelector
             agentId={agentId}
@@ -483,7 +467,7 @@ export default function CinematicScene() {
           />
         </div>
 
-        {/* Stage explanation — top-left, collapsible card */}
+        {/* Stage explanation + playback controls — top-left, collapsible card */}
         <StagePanel
           stage={currentStage}
           stageIndex={STAGES.findIndex((s) => s.id === currentStage.id)}
@@ -492,6 +476,12 @@ export default function CinematicScene() {
           lang={i18nLang}
           open={stagePanelOpen}
           setOpen={setStagePanelOpen}
+          progress={progress}
+          playing={playing}
+          onPlay={() => (playing ? stopPlay() : startPlay())}
+          onPrev={stepPrev}
+          onNext={stepNext}
+          onReset={resetToTop}
         />
 
         {/* 3D camera-tilted stage */}
@@ -764,47 +754,6 @@ export default function CinematicScene() {
             </div>
           </motion.div>
         </motion.div>
-
-        {/* Playback controls — pinned to the very bottom of the viewport
-            on its own row, with a subtle gradient mask above so it never
-            sits on top of OutputPanel content. */}
-        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
-          <div className="glass rounded-full px-1.5 py-1.5 flex items-center gap-1 pointer-events-auto">
-            <button
-              onClick={stepPrev}
-              className="h-9 w-9 rounded-full hover:bg-white/10 text-white/80 flex items-center justify-center transition"
-              aria-label="previous step"
-              title="paso anterior"
-            >
-              <ChevronLeft size={16} />
-            </button>
-            <button
-              onClick={() => (playing ? stopPlay() : startPlay())}
-              className="h-9 w-9 rounded-full bg-white text-black flex items-center justify-center hover:bg-white/90 transition"
-              aria-label={playing ? "pause" : "play"}
-            >
-              {playing ? <Pause size={14} /> : <Play size={14} />}
-            </button>
-            <button
-              onClick={stepNext}
-              className="h-9 w-9 rounded-full hover:bg-white/10 text-white/80 flex items-center justify-center transition"
-              aria-label="next step"
-              title="siguiente paso"
-            >
-              <ChevronRight size={16} />
-            </button>
-            <button
-              onClick={resetToTop}
-              className="h-9 w-9 rounded-full hover:bg-white/10 text-white/70 flex items-center justify-center transition"
-              aria-label="reset"
-            >
-              <RotateCcw size={13} />
-            </button>
-            <span className="px-3 mono text-[10px] text-white/55">
-              {Math.round(progress * 100)}%
-            </span>
-          </div>
-        </div>
 
         {/* Bottom: scroll progress + hint */}
         <ScrollProgress progress={scrollYProgress} hintVisible={progress < 0.05 && !playing} />
@@ -1122,6 +1071,12 @@ function StagePanel({
   lang,
   open,
   setOpen,
+  progress,
+  playing,
+  onPlay,
+  onPrev,
+  onNext,
+  onReset,
 }: {
   stage: Stage;
   stageIndex: number;
@@ -1130,6 +1085,12 @@ function StagePanel({
   lang: string;
   open: boolean;
   setOpen: (b: boolean) => void;
+  progress: number;
+  playing: boolean;
+  onPlay: () => void;
+  onPrev: () => void;
+  onNext: () => void;
+  onReset: () => void;
 }) {
   const isHookStage = stage.id === "pre-hook" || stage.id === "post-hook";
   const noHooksNote =
@@ -1175,7 +1136,7 @@ function StagePanel({
         </button>
 
         {open && (
-          <div className="px-3 pb-3 pt-1 border-t border-white/5">
+          <div className="px-3 pb-2 pt-1 border-t border-white/5">
             <p className="text-[12px] text-white/70 leading-relaxed min-h-[60px]">
               {stage.description[(lang as "es" | "en") || "es"]}
             </p>
@@ -1186,6 +1147,57 @@ function StagePanel({
             )}
           </div>
         )}
+
+        {/* Playback controls — footer of the StagePanel so all navigation
+            lives in one place on the left and never overlaps the chat
+            stage on the right. */}
+        <div className="px-2 py-2 border-t border-white/5 flex items-center gap-1">
+          <button
+            onClick={onPrev}
+            className="h-8 w-8 rounded-full hover:bg-white/10 text-white/80 flex items-center justify-center transition"
+            aria-label="previous step"
+            title="anterior (←)"
+          >
+            <ChevronLeft size={14} />
+          </button>
+          <button
+            onClick={onPlay}
+            className="h-8 w-8 rounded-full bg-white text-black flex items-center justify-center hover:bg-white/90 transition"
+            aria-label={playing ? "pause" : "play next"}
+            title={playing ? "pausar (espacio)" : "siguiente (espacio)"}
+          >
+            {playing ? <Pause size={12} /> : <Play size={12} />}
+          </button>
+          <button
+            onClick={onNext}
+            className="h-8 w-8 rounded-full hover:bg-white/10 text-white/80 flex items-center justify-center transition"
+            aria-label="next step"
+            title="siguiente (→)"
+          >
+            <ChevronRight size={14} />
+          </button>
+          <button
+            onClick={onReset}
+            className="h-8 w-8 rounded-full hover:bg-white/10 text-white/70 flex items-center justify-center transition"
+            aria-label="reset"
+            title="reiniciar"
+          >
+            <RotateCcw size={12} />
+          </button>
+          <div className="flex-1 mx-2 h-1 rounded-full bg-white/8 overflow-hidden">
+            <div
+              className="h-full"
+              style={{
+                width: `${progress * 100}%`,
+                background:
+                  "linear-gradient(90deg,#a78bfa,#22d3ee,#f472b6)",
+              }}
+            />
+          </div>
+          <span className="mono text-[10px] text-white/45 shrink-0 pr-1">
+            {Math.round(progress * 100)}%
+          </span>
+        </div>
       </div>
     </div>
   );
