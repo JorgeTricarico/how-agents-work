@@ -307,69 +307,96 @@ export default function CinematicScene() {
     progress > W.assistantStart,
   ]);
 
-  // Auto-play: animates window scroll from section top → bottom over ~50s
+  // Auto-play: chains hops between anchors with a dwell pause at each.
   const [playing, setPlaying] = useState(false);
   const playRafRef = useRef<number | null>(null);
   const playStartRef = useRef<{ ts: number; fromY: number; toY: number } | null>(null);
+  const dwellTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const playingRef = useRef(false);
 
   const stopPlay = () => {
     if (playRafRef.current) cancelAnimationFrame(playRafRef.current);
+    if (dwellTimeoutRef.current) clearTimeout(dwellTimeoutRef.current);
     playRafRef.current = null;
     playStartRef.current = null;
+    dwellTimeoutRef.current = null;
+    playingRef.current = false;
     setPlaying(false);
   };
 
-  // Animates the scroll from current to a target progress.
-  // mode 'step' = capped quick hop for ←/→ (max 4s).
-  // mode 'continuous' = full slow playback (~120s for the whole section).
-  const playToProgress = (
+  // Hop to a single target progress with eased motion. Used both by step
+  // navigation and by the auto-play chain. Returns a Promise that
+  // resolves when the hop ends or is interrupted.
+  const hopToProgress = (
     targetProgress: number,
-    mode: "step" | "continuous" = "step",
-  ) => {
-    if (!containerRef.current) return;
-    stopPlay();
-    const rect = containerRef.current.getBoundingClientRect();
-    const sectionTop = window.scrollY + rect.top;
-    const total = rect.height - window.innerHeight;
-    if (total <= 0) return;
-    const toY = sectionTop + targetProgress * total;
-    const fromY = window.scrollY;
-    const distance = Math.abs(toY - fromY);
-    if (distance < 2) return;
-    // step:       ~30s for full distance, capped at 4s per hop
-    // continuous: ~120s for full distance, no cap (slow playback)
-    const duration =
-      mode === "continuous"
-        ? Math.max(2000, (distance / total) * 120000)
-        : Math.max(900, Math.min(4000, (distance / total) * 30000));
-    setPlaying(true);
-    playStartRef.current = { ts: performance.now(), fromY, toY };
+    durationMs?: number,
+  ): Promise<void> => {
+    return new Promise((resolve) => {
+      if (!containerRef.current) return resolve();
+      const rect = containerRef.current.getBoundingClientRect();
+      const sectionTop = window.scrollY + rect.top;
+      const total = rect.height - window.innerHeight;
+      if (total <= 0) return resolve();
+      const toY = sectionTop + targetProgress * total;
+      const fromY = window.scrollY;
+      const distance = Math.abs(toY - fromY);
+      if (distance < 2) return resolve();
+      const duration =
+        durationMs ??
+        Math.max(900, Math.min(3000, (distance / total) * 24000));
+      playStartRef.current = { ts: performance.now(), fromY, toY };
 
-    const tick = (now: number) => {
-      const s = playStartRef.current;
-      if (!s) return;
-      const k = Math.min(1, (now - s.ts) / duration);
-      // For continuous, linear pace (matches a video player). For
-      // single-step hops, ease in/out.
-      const eased =
-        mode === "continuous"
-          ? k
-          : k < 0.5
-            ? 4 * k * k * k
-            : 1 - Math.pow(-2 * k + 2, 3) / 2;
-      window.scrollTo(0, s.fromY + (s.toY - s.fromY) * eased);
-      if (k >= 1) {
-        stopPlay();
-        return;
-      }
+      const tick = (now: number) => {
+        const s = playStartRef.current;
+        if (!s) return resolve();
+        const k = Math.min(1, (now - s.ts) / duration);
+        const eased =
+          k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+        window.scrollTo(0, s.fromY + (s.toY - s.fromY) * eased);
+        if (k >= 1) {
+          playStartRef.current = null;
+          return resolve();
+        }
+        playRafRef.current = requestAnimationFrame(tick);
+      };
       playRafRef.current = requestAnimationFrame(tick);
-    };
-    playRafRef.current = requestAnimationFrame(tick);
+    });
   };
 
-  // Play button: continuous slow playback to the end. Pause = real pause.
-  const startPlay = () => {
-    playToProgress(1.0, "continuous");
+  // Step navigation (←/→) calls this directly — single hop, then stops.
+  const playToProgress = (target: number) => {
+    stopPlay();
+    setPlaying(true);
+    playingRef.current = true;
+    hopToProgress(target).then(() => {
+      // single-hop: stop after one
+      stopPlay();
+    });
+  };
+
+  // Continuous play: chain hops anchor → anchor with a dwell pause
+  // between each so the user can read the state. Natural movement
+  // speed during hops, generous reading time at each anchor.
+  const startPlay = async () => {
+    stopPlay();
+    setPlaying(true);
+    playingRef.current = true;
+
+    const remaining = STAGES.filter((a) => a.at > progress + 0.005);
+    const dwellMs = 2200; // reading pause at each stage
+
+    for (const stage of remaining) {
+      if (!playingRef.current) return;
+      await hopToProgress(stage.at);
+      if (!playingRef.current) return;
+      await new Promise<void>((resolve) => {
+        dwellTimeoutRef.current = setTimeout(resolve, dwellMs);
+      });
+    }
+    if (playingRef.current) {
+      await hopToProgress(1.0, 1500);
+    }
+    stopPlay();
   };
 
   const resetToTop = () => {
