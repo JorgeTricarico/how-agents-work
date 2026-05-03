@@ -194,6 +194,8 @@ export default function CinematicScene() {
   const [agentId, setAgentId] = useState<AgentId>("claude-code");
   const agent = AGENTS[agentId];
   const [vw, setVw] = useState(1024);
+  const [focusedCard, setFocusedCard] = useState<string | null>(null);
+  const [stagePanelOpen, setStagePanelOpen] = useState(true);
   useEffect(() => {
     const update = () => setVw(window.innerWidth);
     update();
@@ -208,7 +210,7 @@ export default function CinematicScene() {
   // Cards now cluster vertically around the orb (which sits between input
   // and output panels) instead of spreading across the whole chat height.
   const verticalUnit = isMobile ? 70 : 80;
-  const orbGap = isMobile ? 90 : 120; // space between input and output panels (orb lives here)
+  const orbGap = isMobile ? 110 : 160; // space between input and output panels (orb lives here)
 
   const { scrollYProgress } = useScroll({
     target: containerRef,
@@ -403,16 +405,16 @@ export default function CinematicScene() {
           />
         </div>
 
-        {/* Stage explanation — sticky panel right side, hidden on mobile */}
-        {!isMobile && (
-          <StagePanel
-            stage={currentStage}
-            stageIndex={STAGES.findIndex((s) => s.id === currentStage.id)}
-            total={STAGES.length}
-            agent={agent}
-            lang={i18nLang}
-          />
-        )}
+        {/* Stage explanation — top-left, collapsible card */}
+        <StagePanel
+          stage={currentStage}
+          stageIndex={STAGES.findIndex((s) => s.id === currentStage.id)}
+          total={STAGES.length}
+          agent={agent}
+          lang={i18nLang}
+          open={stagePanelOpen}
+          setOpen={setStagePanelOpen}
+        />
 
         {/* 3D camera-tilted stage */}
         <motion.div
@@ -449,6 +451,10 @@ export default function CinematicScene() {
                 verticalUnit={verticalUnit}
                 cardWidth={cardWidth}
                 isMobile={isMobile}
+                focused={focusedCard === card.key}
+                onFocus={() =>
+                  setFocusedCard((prev) => (prev === card.key ? null : card.key))
+                }
               />
             ))}
             {/* Injection arrows from cards to the convergence orb */}
@@ -478,19 +484,6 @@ export default function CinematicScene() {
               className="relative z-30 mx-auto flex flex-col items-stretch"
               style={{ width: chatWidth }}
             >
-              {/* Status pill — small, floating above input */}
-              <div className="self-center mb-2 glass rounded-full px-3 py-1 flex items-center gap-2 mono text-[10px] text-white/55">
-                <motion.span
-                  animate={{ opacity: thinking ? [0.4, 1, 0.4] : 1 }}
-                  transition={{ duration: 1.2, repeat: Infinity }}
-                  className="h-1.5 w-1.5 rounded-full"
-                  style={{ background: thinking ? "#fbbf24" : "#10b981" }}
-                />
-                <span className="text-white/75">{thinking ? t.thinking : t.ready}</span>
-                <span className="text-white/25">·</span>
-                <span>{agent.modelLabel}</span>
-              </div>
-
               {/* INPUT PANEL — user message only */}
               <motion.div
                 className="rounded-2xl overflow-hidden"
@@ -688,17 +681,6 @@ export default function CinematicScene() {
 
         {/* Playback controls */}
         <div className="absolute bottom-5 inset-x-0 z-50 flex flex-col items-center gap-2 pointer-events-none">
-          {/* Stage label */}
-          <div
-            key={currentStage.id}
-            className="pointer-events-auto glass rounded-full px-3 py-1 mono text-[11px] text-white/85"
-          >
-            <span className="text-white/45 mr-2">
-              {STAGES.findIndex((s) => s.id === currentStage.id) + 1}/{STAGES.length}
-            </span>
-            {currentStage.label[i18nLang as "es" | "en"] || currentStage.label.es}
-          </div>
-
           <div className="glass rounded-full px-1.5 py-1.5 flex items-center gap-1 pointer-events-auto">
             <button
               onClick={stepPrev}
@@ -765,6 +747,8 @@ function Card3D({
   verticalUnit,
   cardWidth,
   isMobile,
+  focused,
+  onFocus,
 }: {
   card: CtxCard;
   progress: number;
@@ -773,6 +757,8 @@ function Card3D({
   verticalUnit: number;
   cardWidth: number;
   isMobile: boolean;
+  focused: boolean;
+  onFocus: () => void;
 }) {
   const { t, lang } = useLang();
   const data = {
@@ -825,26 +811,45 @@ function Card3D({
     blur = cT * 6;
   }
 
+  // When focused (clicked/tapped) the card is pinned to the front, big,
+  // unrotated and unblurred so it can be read fully on touch devices.
+  const finalAnimate = focused
+    ? {
+        opacity: 1,
+        x: 0,
+        y: 0,
+        z: 120,
+        rotateY: 0,
+        scale: 1.25,
+        filter: "blur(0px)",
+      }
+    : { opacity, x, y, z: zVal, rotateY: rY, scale, filter: blur ? `blur(${blur}px)` : "blur(0px)" };
+
   return (
     <motion.div
-      className="absolute top-1/2 left-1/2 pointer-events-auto cursor-default"
+      className="absolute top-1/2 left-1/2 pointer-events-auto cursor-pointer"
       style={{
         width: cardWidth,
         marginLeft: -cardWidth / 2,
         marginTop: -80,
         transformStyle: "preserve-3d",
-        zIndex: 10 - card.slot,
+        zIndex: focused ? 70 : 10 - card.slot,
       }}
-      animate={{ opacity, x, y, z: zVal, rotateY: rY, scale, filter: blur ? `blur(${blur}px)` : "blur(0px)" }}
-      transition={{ duration: 0.15, ease: "linear" }}
-      whileHover={{
-        scale: scale * 1.08,
-        z: 80,
-        rotateY: 0,
-        zIndex: 60,
-        filter: "blur(0px)",
-        transition: { duration: 0.25 },
-      }}
+      onClick={onFocus}
+      animate={finalAnimate}
+      transition={{ duration: focused ? 0.35 : 0.15, ease: focused ? "easeOut" : "linear" }}
+      whileHover={
+        focused
+          ? undefined
+          : {
+              scale: scale * 1.08,
+              z: 80,
+              rotateY: 0,
+              zIndex: 60,
+              filter: "blur(0px)",
+              transition: { duration: 0.25 },
+            }
+      }
     >
       <div
         className="rounded-xl glass overflow-hidden"
@@ -1026,55 +1031,86 @@ function StagePanel({
   total,
   agent,
   lang,
+  open,
+  setOpen,
 }: {
   stage: Stage;
   stageIndex: number;
   total: number;
   agent: { name: string; modelLabel: string; supportsHooks: boolean; hooksNote: { es: string; en: string } };
   lang: string;
+  open: boolean;
+  setOpen: (b: boolean) => void;
 }) {
   const isHookStage = stage.id === "pre-hook" || stage.id === "post-hook";
   const noHooksNote =
     isHookStage && !agent.supportsHooks
       ? agent.hooksNote[(lang as "es" | "en") || "es"]
       : null;
-  // Horizontal banner anchored at the bottom of the stage, above the
-  // playback controls — so it never overlaps the floating cards on the
-  // sides of the chat panel.
   return (
-    <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-40 w-[min(720px,92vw)] pointer-events-none">
+    <div className="absolute top-20 left-4 md:left-6 z-50 pointer-events-none">
       <motion.div
-        key={stage.id}
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3 }}
-        className="glass rounded-2xl px-4 py-3 pointer-events-auto flex items-start gap-4"
+        layout
+        animate={{ width: open ? 320 : 56 }}
+        transition={{ type: "spring", stiffness: 240, damping: 28 }}
+        className="glass rounded-2xl pointer-events-auto overflow-hidden"
       >
-        <div className="shrink-0 flex flex-col items-center justify-center w-12 h-12 rounded-xl bg-white/5 border border-white/10">
-          <span className="mono text-[9px] uppercase tracking-wider text-white/45">
-            stage
-          </span>
-          <span className="text-base font-semibold text-white leading-none mt-0.5">
-            {stageIndex + 1}
-            <span className="text-white/40 text-xs">/{total}</span>
-          </span>
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center justify-between gap-3 mb-1">
-            <h3 className="text-[14px] font-semibold text-white truncate">
-              {stage.label[(lang as "es" | "en") || "es"]}
-            </h3>
-            <span className="mono text-[10px] text-white/45 shrink-0">{agent.name}</span>
+        {/* Header — always visible, click to toggle */}
+        <button
+          onClick={() => setOpen(!open)}
+          className="w-full flex items-center gap-3 px-3 py-2 hover:bg-white/5 transition cursor-pointer"
+        >
+          <div className="shrink-0 flex flex-col items-center justify-center w-10 h-10 rounded-lg bg-white/5 border border-white/10">
+            <span className="mono text-[8px] uppercase tracking-wider text-white/45 leading-none">
+              stage
+            </span>
+            <span className="text-sm font-semibold text-white leading-none mt-0.5">
+              {stageIndex + 1}
+            </span>
           </div>
-          <p className="text-[12px] text-white/65 leading-snug">
-            {stage.description[(lang as "es" | "en") || "es"]}
-          </p>
-          {noHooksNote && (
-            <div className="mt-2 px-2.5 py-1.5 rounded-md border border-amber-400/30 bg-amber-500/10 text-amber-200 mono text-[10.5px] leading-snug">
-              ⚠ {noHooksNote}
-            </div>
+          {open && (
+            <motion.div
+              key={stage.id}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="flex-1 min-w-0 text-left"
+            >
+              <div className="text-[13px] font-semibold text-white truncate">
+                {stage.label[(lang as "es" | "en") || "es"]}
+              </div>
+              <div className="mono text-[10px] text-white/45 truncate">
+                {stageIndex + 1}/{total} · {agent.name}
+              </div>
+            </motion.div>
           )}
-        </div>
+          {open && (
+            <span className="mono text-[10px] text-white/40 shrink-0">−</span>
+          )}
+          {!open && (
+            <span className="mono text-[10px] text-white/40 shrink-0 pr-1">+</span>
+          )}
+        </button>
+
+        {/* Body — only when open */}
+        {open && (
+          <motion.div
+            key={stage.id + "-body"}
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.25 }}
+            className="px-3 pb-3 pt-1"
+          >
+            <p className="text-[12px] text-white/70 leading-relaxed">
+              {stage.description[(lang as "es" | "en") || "es"]}
+            </p>
+            {noHooksNote && (
+              <div className="mt-2 px-2.5 py-1.5 rounded-md border border-amber-400/30 bg-amber-500/10 text-amber-200 mono text-[10.5px] leading-snug">
+                ⚠ {noHooksNote}
+              </div>
+            )}
+          </motion.div>
+        )}
       </motion.div>
     </div>
   );
@@ -1122,16 +1158,16 @@ function ConvergenceOrb({
         transform: "translate(-50%, -50%)",
       }}
     >
-      {/* Outer glow halo */}
+      {/* Outer glow halo (clipped to keep it from leaking into panels) */}
       <motion.div
         className="absolute rounded-full"
         style={{
-          left: -size * 1.4,
-          top: -size * 1.4,
-          width: size * 2.8,
-          height: size * 2.8,
+          left: -size * 1.1,
+          top: -size * 1.1,
+          width: size * 2.2,
+          height: size * 2.2,
           background: `radial-gradient(circle, ${colors[0]}55, ${colors[1]}33 40%, transparent 70%)`,
-          filter: "blur(14px)",
+          filter: "blur(10px)",
         }}
         animate={{
           opacity: isPostMerge ? 0.95 : 0.45 + buildup * 0.4,
