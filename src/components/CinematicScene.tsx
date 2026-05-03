@@ -670,18 +670,13 @@ export default function CinematicScene() {
                   // gracefully then.
                   opacity: progress < 0.36 ? 0 : 1,
                   y: progress < 0.36 ? 30 : 0,
-                  // After the orb merges into the panel (progress > 0.46),
-                  // the OutputPanel border itself adopts the orb's
-                  // multi-color glow to communicate 'the orb's energy
-                  // is now living here'.
+                  // After the orb has merged (progress > 0.46), the
+                  // OutputPanel keeps a static violet glow — no
+                  // cycling, no animation. Conveys 'the orb's energy
+                  // now lives here' without flashing forever.
                   boxShadow:
                     progress >= 0.46
-                      ? [
-                          "0 40px 80px -25px rgba(0,0,0,0.7), 0 0 0 1px rgba(167,139,250,0.7) inset, 0 0 60px rgba(167,139,250,0.35)",
-                          "0 40px 80px -25px rgba(0,0,0,0.7), 0 0 0 1px rgba(34,211,238,0.7) inset, 0 0 60px rgba(34,211,238,0.35)",
-                          "0 40px 80px -25px rgba(0,0,0,0.7), 0 0 0 1px rgba(244,114,182,0.7) inset, 0 0 60px rgba(244,114,182,0.35)",
-                          "0 40px 80px -25px rgba(0,0,0,0.7), 0 0 0 1px rgba(167,139,250,0.7) inset, 0 0 60px rgba(167,139,250,0.35)",
-                        ]
+                      ? "0 40px 80px -25px rgba(0,0,0,0.7), 0 0 0 1px rgba(167,139,250,0.55) inset, 0 0 50px rgba(167,139,250,0.25)"
                       : ctxConverging
                         ? [
                             "0 40px 80px -25px rgba(0,0,0,0.7), 0 0 0 1px rgba(167,139,250,0.5) inset",
@@ -691,11 +686,9 @@ export default function CinematicScene() {
                         : "0 40px 80px -25px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.06) inset",
                 }}
                 transition={
-                  progress >= 0.46
-                    ? { duration: 4, repeat: Infinity, ease: "linear" }
-                    : ctxConverging
-                      ? { duration: 1.6, repeat: Infinity, ease: "easeInOut" }
-                      : { duration: 0.9, delay: 0.15 }
+                  ctxConverging && progress < 0.46
+                    ? { duration: 1.6, repeat: Infinity, ease: "easeInOut" }
+                    : { duration: 0.8 }
                 }
               >
                 <div className="px-4 py-2 border-b border-white/5 mono text-[10px] uppercase tracking-wider text-white/45 flex items-center justify-between shrink-0">
@@ -1304,12 +1297,16 @@ function ConvergenceOrb({
   while (colors.length < 4) colors.push("#a78bfa");
 
   const baseSize = 26;
-  // After delivering the prompt (progress > 0.46), the orb shrinks and
-  // its energy "transfers" to the OutputPanel border instead.
+  // After delivering the prompt (progress > 0.46), the orb dissolves —
+  // size shrinks and opacity goes to 0 over a 0.06-progress window. Its
+  // energy 'transfers' to the OutputPanel border (handled outside).
   const mergeT = Math.max(0, Math.min(1, (progress - 0.46) / 0.06));
   const sizeBeforeMerge =
     baseSize + buildup * 30 + (isConverging ? 20 : 0) + (isInference ? 10 : 0);
-  const size = sizeBeforeMerge * (1 - 0.55 * mergeT);
+  const size = sizeBeforeMerge * (1 - 0.7 * mergeT);
+  // Combine pre-merge progressive disclosure with post-merge dissolution.
+  const orbOpacity =
+    Math.max(0, Math.min(1, (progress - 0.10) / 0.10)) * (1 - mergeT);
 
   // Orb sits in the visual MIDDLE of the orbGap (between InputPanel and
   // OutputPanel) — using the actual gap, not the stack center, otherwise
@@ -1317,11 +1314,6 @@ function ConvergenceOrb({
   // and leaves wasted space between InputPanel and orb.
   const inputPanelHeight = 100; // header + padding + bubble
   const orbY = inputPanelHeight + orbGap / 2;
-  // Progressive disclosure: orb is invisible at the very start, fades in
-  // smoothly between progress 0.10 (just before slot-0 cards arrive) and
-  // 0.20 (cards settled). Keeps the initial frame focused on the user
-  // input only.
-  const orbOpacity = Math.max(0, Math.min(1, (progress - 0.10) / 0.10));
   return (
     <div
       className="absolute left-1/2 z-45 pointer-events-none"
