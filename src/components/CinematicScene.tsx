@@ -3,8 +3,8 @@
 import {
   motion,
   AnimatePresence,
-  useScroll,
   useTransform,
+  useMotionValue,
   useMotionValueEvent,
   MotionValue,
 } from "framer-motion";
@@ -252,11 +252,37 @@ export default function CinematicScene() {
   const verticalUnit = isMobile ? 70 : 80;
   const orbGap = isMobile ? 110 : 160; // space between input and output panels (orb lives here)
 
-  const { scrollYProgress } = useScroll({
-    target: containerRef,
-    offset: ["start start", "end end"],
-  });
+  // Manual scroll-progress tracker. More robust than framer-motion's
+  // useScroll on Lenis + sticky setups (which logs the
+  // 'non-static position' warning and sometimes never updates in
+  // production builds with React 19).
+  const scrollYProgress = useMotionValue(0);
   const [progress, setProgress] = useState(0);
+
+  useEffect(() => {
+    const compute = () => {
+      const el = containerRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const total = rect.height - window.innerHeight;
+      if (total <= 0) {
+        scrollYProgress.set(0);
+        setProgress(0);
+        return;
+      }
+      const p = Math.max(0, Math.min(1, -rect.top / total));
+      scrollYProgress.set(p);
+      setProgress(p);
+    };
+    compute();
+    window.addEventListener("scroll", compute, { passive: true });
+    window.addEventListener("resize", compute);
+    return () => {
+      window.removeEventListener("scroll", compute);
+      window.removeEventListener("resize", compute);
+    };
+  }, [scrollYProgress]);
+
   useMotionValueEvent(scrollYProgress, "change", (v) => setProgress(v));
 
   // Auto-scroll the OutputPanel content to its bottom whenever new beats
@@ -1253,13 +1279,17 @@ function ConvergenceOrb({
   const size =
     baseSize + buildup * 30 + (isConverging ? 20 : 0) + (isInference ? 10 : 0);
 
-  // Orb sits at the vertical center of the stage (which is exactly where
-  // the gap between InputPanel and OutputPanel lives). orbGap is the
-  // height of that gap; we render at exactly center.
+  // Orb sits in the visual MIDDLE of the orbGap (between InputPanel and
+  // OutputPanel) — using the actual gap, not the stack center, otherwise
+  // when OutputPanel is taller than InputPanel the orb drifts downward
+  // and leaves wasted space between InputPanel and orb.
+  const inputPanelHeight = 100; // header + padding + bubble
+  const orbY = inputPanelHeight + orbGap / 2;
   return (
     <div
-      className="absolute left-1/2 top-1/2 z-45 pointer-events-none"
+      className="absolute left-1/2 z-45 pointer-events-none"
       style={{
+        top: orbY,
         transform: "translate(-50%, -50%)",
       }}
     >
@@ -1421,14 +1451,22 @@ function InjectionArrows({
   verticalUnit: number;
   orbGap: number;
 }) {
-  // SVG canvas centered over stage. Arrows converge into the orb,
-  // which sits at the stage vertical center.
+  // SVG canvas centered over stage. Arrows converge into the orb at its
+  // actual position (middle of the orbGap), not at the stage's geometric
+  // center.
   const W = 1300;
   const H = 800;
   const cx = W / 2;
   const cy = H / 2;
   const orbX = cx;
-  const orbY = cy;
+  const inputPanelHeight = 100;
+  // Stage SVG is centered over the stage; we compute orb offset from
+  // stage top (which equals stage center - stackHalf). Approximate
+  // by using cy minus half of (output panel height - input panel
+  // height) shift, but simpler: fixed offset corresponding to the
+  // orb's same equation.
+  const stackHalfApprox = (inputPanelHeight + orbGap + 260) / 2;
+  const orbY = cy - stackHalfApprox + inputPanelHeight + orbGap / 2;
   return (
     <svg
       className="pointer-events-none absolute left-1/2 top-1/2 z-20"
