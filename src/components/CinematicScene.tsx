@@ -428,6 +428,14 @@ export default function CinematicScene() {
               scale: camScale,
             }}
           >
+            {/* Convergence orb — visible point where rules merge into the prompt
+                that the model receives. Lives just below the chat panel. */}
+            <ConvergenceOrb
+              progress={progress}
+              cards={visibleCards}
+              chatHeight={isMobile ? 480 : 520}
+            />
+
             {/* Floating context cards */}
             {visibleCards.map((card) => (
               <Card3D
@@ -441,13 +449,14 @@ export default function CinematicScene() {
                 isMobile={isMobile}
               />
             ))}
-            {/* Injection arrows from cards to chat */}
+            {/* Injection arrows from cards to the convergence orb */}
             {!isMobile && <InjectionArrows
               cards={visibleCards}
               progress={progress}
               converging={ctxConverging}
               lateralUnit={lateralUnit}
               verticalUnit={verticalUnit}
+              chatHeight={isMobile ? 480 : 520}
             />}
 
             {/* Convergence beam + merge burst */}
@@ -998,7 +1007,7 @@ function StagePanel({
   // playback controls — so it never overlaps the floating cards on the
   // sides of the chat panel.
   return (
-    <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-40 w-[min(720px,92vw)] pointer-events-none">
+    <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-40 w-[min(720px,92vw)] pointer-events-none">
       <motion.div
         key={stage.id}
         initial={{ opacity: 0, y: 10 }}
@@ -1036,24 +1045,194 @@ function StagePanel({
   );
 }
 
+function ConvergenceOrb({
+  progress,
+  cards,
+  chatHeight,
+}: {
+  progress: number;
+  cards: CtxCard[];
+  chatHeight: number;
+}) {
+  // Orb fills with energy as cards settle; pulses extra during the
+  // converge moment; shoots a vertical beam into the chat once
+  // inference begins. The beam continues every time tool_result
+  // is fed back, hinting that "everything funnels through here."
+
+  // Buildup grows as more cards reach their settled state
+  const reached = cards.filter((c) => progress >= c.settle).length;
+  const totalCards = cards.length || 1;
+  const buildup = Math.min(1, reached / totalCards);
+
+  const isConverging = progress > 0.34 && progress < 0.42;
+  const isInference = progress > 0.42 && progress < 0.46;
+  const isPostMerge = progress > 0.36;
+  const isAnswerStream = progress > 0.74 && progress < 0.94;
+
+  // Color stops mix from cards' rule colors as buildup grows
+  const colors = cards.slice(0, 4).map((c) => c.ruleColor);
+  while (colors.length < 4) colors.push("#a78bfa");
+
+  const baseSize = 26;
+  const size =
+    baseSize + buildup * 30 + (isConverging ? 20 : 0) + (isInference ? 10 : 0);
+
+  // Position orb slightly below the chat panel bottom edge but above the
+  // stage panel banner (which sits at bottom-3, ~120px tall).
+  const verticalOffset = chatHeight / 2 - 20;
+  return (
+    <div
+      className="absolute left-1/2 top-1/2 z-45 pointer-events-none"
+      style={{
+        marginTop: verticalOffset,
+        transform: "translateX(-50%)",
+      }}
+    >
+      {/* Outer glow halo */}
+      <motion.div
+        className="absolute rounded-full"
+        style={{
+          left: -size * 1.4,
+          top: -size * 1.4,
+          width: size * 2.8,
+          height: size * 2.8,
+          background: `radial-gradient(circle, ${colors[0]}55, ${colors[1]}33 40%, transparent 70%)`,
+          filter: "blur(14px)",
+        }}
+        animate={{
+          opacity: isPostMerge ? 0.95 : 0.45 + buildup * 0.4,
+          scale: isConverging ? [1, 1.4, 1.1] : 1,
+        }}
+        transition={
+          isConverging
+            ? { duration: 1.4, repeat: Infinity, ease: "easeInOut" }
+            : { duration: 0.5 }
+        }
+      />
+
+      {/* Core orb */}
+      <motion.div
+        className="absolute rounded-full"
+        style={{
+          left: -size / 2,
+          top: -size / 2,
+          width: size,
+          height: size,
+          background: `conic-gradient(from 0deg, ${colors[0]}, ${colors[1]}, ${colors[2]}, ${colors[3]}, ${colors[0]})`,
+          boxShadow: `0 0 ${size}px ${colors[0]}aa, 0 0 ${size * 0.5}px ${colors[1]}88`,
+        }}
+        animate={{
+          rotate: 360,
+          scale: isConverging ? [1, 1.2, 1] : 1,
+        }}
+        transition={{
+          rotate: { duration: 8, repeat: Infinity, ease: "linear" },
+          scale: isConverging
+            ? { duration: 0.9, repeat: Infinity, ease: "easeInOut" }
+            : { duration: 0.4 },
+        }}
+      />
+
+      {/* Inner glassy core */}
+      <motion.div
+        className="absolute rounded-full"
+        style={{
+          left: -size * 0.32,
+          top: -size * 0.32,
+          width: size * 0.64,
+          height: size * 0.64,
+          background:
+            "radial-gradient(circle at 35% 30%, rgba(255,255,255,0.95), rgba(255,255,255,0.2) 50%, rgba(255,255,255,0.05) 80%)",
+        }}
+        animate={{ opacity: isPostMerge ? [0.8, 1, 0.8] : 0.6 }}
+        transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
+      />
+
+      {/* Stage label tag below the orb */}
+      <motion.div
+        className="absolute mono text-[10px] uppercase tracking-wider whitespace-nowrap"
+        style={{
+          left: -90,
+          top: size + 14,
+          width: 180,
+          textAlign: "center",
+          color: isPostMerge ? "#fff" : "rgba(255,255,255,0.5)",
+        }}
+        animate={{ opacity: buildup > 0.3 ? 1 : 0.5 }}
+      >
+        prompt al modelo
+      </motion.div>
+
+      {/* Crystallize beam — orb feeds upward into the chat panel during
+          inference and during answer streaming */}
+      <AnimatePresence>
+        {(isInference || isAnswerStream) && (
+          <motion.div
+            initial={{ opacity: 0, scaleY: 0 }}
+            animate={{ opacity: 1, scaleY: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute"
+            style={{
+              left: -2,
+              bottom: 0,
+              height: chatHeight,
+              width: 4,
+              background:
+                "linear-gradient(to top, rgba(255,255,255,0.85), rgba(167,139,250,0.55) 30%, rgba(34,211,238,0.35) 60%, transparent)",
+              transformOrigin: "bottom",
+              filter: "blur(0.5px)",
+            }}
+            transition={{ duration: 0.6, ease: "easeOut" }}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Reverse pulse: tool_result coming back into the orb */}
+      <AnimatePresence>
+        {progress > 0.72 && progress < 0.78 && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.4 }}
+            animate={{ opacity: [0, 0.9, 0], scale: [0.4, 2.4, 3.5] }}
+            exit={{ opacity: 0 }}
+            className="absolute rounded-full border-2"
+            style={{
+              left: -size,
+              top: -size,
+              width: size * 2,
+              height: size * 2,
+              borderColor: "#34d399",
+            }}
+            transition={{ duration: 1.2, ease: "easeOut" }}
+          />
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 function InjectionArrows({
   cards,
   progress,
   converging,
   lateralUnit,
   verticalUnit,
+  chatHeight,
 }: {
   cards: CtxCard[];
   progress: number;
   converging: boolean;
   lateralUnit: number;
   verticalUnit: number;
+  chatHeight: number;
 }) {
-  // SVG canvas centered over stage; arrows go from each settled card → chat panel
+  // SVG canvas centered over stage. Arrows now converge into a single point
+  // (the convergence orb) just below the chat panel.
   const W = 1300;
-  const H = 600;
+  const H = 800;
   const cx = W / 2;
   const cy = H / 2;
+  const orbX = cx;
+  const orbY = cy + chatHeight / 2 - 20;
   return (
     <svg
       className="pointer-events-none absolute left-1/2 top-1/2 z-20"
@@ -1086,16 +1265,15 @@ function InjectionArrows({
         const visible = progress > c.settle && progress < c.converge;
         if (!visible && !converging) return null;
         const { x, y, sign } = cardSlotPosition(c, lateralUnit, verticalUnit);
-        // Card edge facing center
-        const cardEdgeX = cx + x - sign * 110;
-        const cardY = cy + y;
-        // Chat panel edge (closest x)
-        const chatEdgeX = cx + sign * 280 * -1; // toward chat panel side
-        const chatY = cy + (c.slot - 1) * 24;
-        // Quadratic curve control point
-        const ctrlX = (cardEdgeX + chatEdgeX) / 2;
-        const ctrlY = (cardY + chatY) / 2 + sign * -8;
-        const path = `M ${cardEdgeX} ${cardY} Q ${ctrlX} ${ctrlY}, ${chatEdgeX} ${chatY}`;
+        // Card edge facing center (from where the line leaves the card)
+        const cardEdgeX = cx + x - sign * 100;
+        const cardY = cy + y + 30; // bottom-ish of the card body
+        // Quadratic control point pulls the curve toward orb but with vertical
+        // arc, so multiple lines from different slots feel like they're flowing
+        // into one funnel rather than going straight.
+        const ctrlX = (cardEdgeX + orbX) / 2 + sign * -40;
+        const ctrlY = orbY - 100;
+        const path = `M ${cardEdgeX} ${cardY} Q ${ctrlX} ${ctrlY}, ${orbX} ${orbY}`;
         const op = converging ? Math.max(0, 1 - (progress - c.converge) * 30) : 1;
         return (
           <g key={c.key} opacity={op}>
