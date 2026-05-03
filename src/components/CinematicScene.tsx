@@ -234,6 +234,7 @@ export default function CinematicScene() {
   const [vw, setVw] = useState(1024);
   const [focusedCard, setFocusedCard] = useState<string | null>(null);
   const [stagePanelOpen, setStagePanelOpen] = useState(false);
+  const [progress, setProgress] = useState(0);
   const outputPanelRef = useRef<HTMLDivElement>(null);
   const outputContentRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -250,14 +251,19 @@ export default function CinematicScene() {
   // Cards now cluster vertically around the orb (which sits between input
   // and output panels) instead of spreading across the whole chat height.
   const verticalUnit = isMobile ? 70 : 80;
-  const orbGap = isMobile ? 110 : 160; // space between input and output panels (orb lives here)
+  // orbGap collapses after the prompt has been "delivered" into the
+  // OutputPanel (post-merge → post-inference), letting the OutputPanel
+  // ride up to use that real estate.
+  const orbGapBase = isMobile ? 110 : 160;
+  const orbGapCollapsed = isMobile ? 40 : 50;
+  const collapseT = Math.max(0, Math.min(1, (progress - 0.42) / 0.06));
+  const orbGap = Math.round(orbGapBase * (1 - collapseT) + orbGapCollapsed * collapseT);
 
   // Manual scroll-progress tracker. More robust than framer-motion's
   // useScroll on Lenis + sticky setups (which logs the
   // 'non-static position' warning and sometimes never updates in
   // production builds with React 19).
   const scrollYProgress = useMotionValue(0);
-  const [progress, setProgress] = useState(0);
 
   useEffect(() => {
     const compute = () => {
@@ -587,6 +593,11 @@ export default function CinematicScene() {
               className="relative z-30 mx-auto flex flex-col items-stretch"
               style={{ width: chatWidth }}
             >
+              {/* Progressive disclosure: at the very start ONLY the
+                  InputPanel is visible. Other elements (orb, cards,
+                  OutputPanel) fade in as their stage arrives so the
+                  user knows exactly where to look. */}
+
               {/* INPUT PANEL — user message only */}
               <motion.div
                 className="rounded-2xl overflow-hidden"
@@ -654,20 +665,37 @@ export default function CinematicScene() {
                 }}
                 initial={{ opacity: 0, y: 30 }}
                 animate={{
-                  opacity: 1,
-                  y: 0,
-                  boxShadow: ctxConverging
-                    ? [
-                        "0 40px 80px -25px rgba(0,0,0,0.7), 0 0 0 1px rgba(167,139,250,0.5) inset",
-                        "0 40px 80px -25px rgba(0,0,0,0.7), 0 0 0 2px rgba(34,211,238,0.6) inset",
-                        "0 40px 80px -25px rgba(0,0,0,0.7), 0 0 0 1px rgba(244,114,182,0.5) inset",
-                      ]
-                    : "0 40px 80px -25px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.06) inset",
+                  // Stays hidden until the prompt is fully assembled and
+                  // ready to be sent (stage 6, Final prompt). Fades in
+                  // gracefully then.
+                  opacity: progress < 0.36 ? 0 : 1,
+                  y: progress < 0.36 ? 30 : 0,
+                  // After the orb merges into the panel (progress > 0.46),
+                  // the OutputPanel border itself adopts the orb's
+                  // multi-color glow to communicate 'the orb's energy
+                  // is now living here'.
+                  boxShadow:
+                    progress >= 0.46
+                      ? [
+                          "0 40px 80px -25px rgba(0,0,0,0.7), 0 0 0 1px rgba(167,139,250,0.7) inset, 0 0 60px rgba(167,139,250,0.35)",
+                          "0 40px 80px -25px rgba(0,0,0,0.7), 0 0 0 1px rgba(34,211,238,0.7) inset, 0 0 60px rgba(34,211,238,0.35)",
+                          "0 40px 80px -25px rgba(0,0,0,0.7), 0 0 0 1px rgba(244,114,182,0.7) inset, 0 0 60px rgba(244,114,182,0.35)",
+                          "0 40px 80px -25px rgba(0,0,0,0.7), 0 0 0 1px rgba(167,139,250,0.7) inset, 0 0 60px rgba(167,139,250,0.35)",
+                        ]
+                      : ctxConverging
+                        ? [
+                            "0 40px 80px -25px rgba(0,0,0,0.7), 0 0 0 1px rgba(167,139,250,0.5) inset",
+                            "0 40px 80px -25px rgba(0,0,0,0.7), 0 0 0 2px rgba(34,211,238,0.6) inset",
+                            "0 40px 80px -25px rgba(0,0,0,0.7), 0 0 0 1px rgba(244,114,182,0.5) inset",
+                          ]
+                        : "0 40px 80px -25px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.06) inset",
                 }}
                 transition={
-                  ctxConverging
-                    ? { duration: 1.6, repeat: Infinity, ease: "easeInOut" }
-                    : { duration: 0.9, delay: 0.15 }
+                  progress >= 0.46
+                    ? { duration: 4, repeat: Infinity, ease: "linear" }
+                    : ctxConverging
+                      ? { duration: 1.6, repeat: Infinity, ease: "easeInOut" }
+                      : { duration: 0.9, delay: 0.15 }
                 }
               >
                 <div className="px-4 py-2 border-b border-white/5 mono text-[10px] uppercase tracking-wider text-white/45 flex items-center justify-between shrink-0">
@@ -1276,8 +1304,12 @@ function ConvergenceOrb({
   while (colors.length < 4) colors.push("#a78bfa");
 
   const baseSize = 26;
-  const size =
+  // After delivering the prompt (progress > 0.46), the orb shrinks and
+  // its energy "transfers" to the OutputPanel border instead.
+  const mergeT = Math.max(0, Math.min(1, (progress - 0.46) / 0.06));
+  const sizeBeforeMerge =
     baseSize + buildup * 30 + (isConverging ? 20 : 0) + (isInference ? 10 : 0);
+  const size = sizeBeforeMerge * (1 - 0.55 * mergeT);
 
   // Orb sits in the visual MIDDLE of the orbGap (between InputPanel and
   // OutputPanel) — using the actual gap, not the stack center, otherwise
@@ -1285,12 +1317,19 @@ function ConvergenceOrb({
   // and leaves wasted space between InputPanel and orb.
   const inputPanelHeight = 100; // header + padding + bubble
   const orbY = inputPanelHeight + orbGap / 2;
+  // Progressive disclosure: orb is invisible at the very start, fades in
+  // smoothly between progress 0.10 (just before slot-0 cards arrive) and
+  // 0.20 (cards settled). Keeps the initial frame focused on the user
+  // input only.
+  const orbOpacity = Math.max(0, Math.min(1, (progress - 0.10) / 0.10));
   return (
     <div
       className="absolute left-1/2 z-45 pointer-events-none"
       style={{
         top: orbY,
         transform: "translate(-50%, -50%)",
+        opacity: orbOpacity,
+        transition: "opacity 0.4s ease",
       }}
     >
       {/* Outer glow halo (clipped to keep it from leaking into panels) */}
